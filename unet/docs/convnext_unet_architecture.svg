@@ -1,0 +1,159 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="1050" viewBox="0 0 1800 1050" role="img" aria-labelledby="title desc">
+  <title id="title">ConvNeXt-Large U-Net for Crack and Craquelure Segmentation</title>
+  <desc id="desc">Exact encoder, decoder, skip connections, and tensor sizes used by the project.</desc>
+  <defs>
+    <linearGradient id="encoderFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#eef6ff"/>
+      <stop offset="1" stop-color="#bfdcff"/>
+    </linearGradient>
+    <linearGradient id="decoderFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#f2fae9"/>
+      <stop offset="1" stop-color="#cce8ae"/>
+    </linearGradient>
+    <linearGradient id="outputFill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#fff"/>
+      <stop offset="1" stop-color="#eef1f7"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3" flood-color="#0b1f44" flood-opacity="0.16"/>
+    </filter>
+    <marker id="blueArrow" markerWidth="14" markerHeight="14" refX="13" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L14,7 L0,13 z" fill="#15a9c7"/>
+    </marker>
+    <marker id="orangeArrow" markerWidth="14" markerHeight="14" refX="13" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L14,7 L0,13 z" fill="#f47a16"/>
+    </marker>
+    <marker id="navyArrow" markerWidth="14" markerHeight="14" refX="13" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L14,7 L0,13 z" fill="#2056a6"/>
+    </marker>
+    <marker id="magentaArrow" markerWidth="14" markerHeight="14" refX="13" refY="7" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M0,1 L14,7 L0,13 z" fill="#df2c9c"/>
+    </marker>
+    <style>
+      .title { font: 700 38px Arial, sans-serif; fill: #081b43; }
+      .subtitle { font: italic 600 22px Arial, sans-serif; fill: #233c6a; }
+      .section { font: 700 22px Arial, sans-serif; fill: #081b43; letter-spacing: 0.4px; }
+      .box-title { font: 700 19px Arial, sans-serif; fill: #0b2049; }
+      .tensor { font: 700 18px 'DejaVu Sans Mono', monospace; fill: #0b2049; }
+      .small { font: 600 15px Arial, sans-serif; fill: #294164; }
+      .legend { font: 600 16px Arial, sans-serif; fill: #172b4d; }
+      .encoder { fill: url(#encoderFill); stroke: #2056a6; stroke-width: 3; rx: 12; filter: url(#shadow); }
+      .decoder { fill: url(#decoderFill); stroke: #39731e; stroke-width: 3; rx: 12; filter: url(#shadow); }
+      .output { fill: url(#outputFill); stroke: #172b4d; stroke-width: 3; rx: 12; filter: url(#shadow); }
+      .skip, .up, .flow, .head { stroke-linecap: round; stroke-linejoin: round; }
+      .skip { fill: none; stroke: #15a9c7; stroke-width: 3; marker-end: url(#blueArrow); }
+      .up { fill: none; stroke: #f47a16; stroke-width: 3; marker-end: url(#orangeArrow); }
+      .flow { fill: none; stroke: #2056a6; stroke-width: 3; marker-end: url(#navyArrow); }
+      .head { fill: none; stroke: #df2c9c; stroke-width: 3; marker-end: url(#magentaArrow); }
+    </style>
+  </defs>
+
+  <rect width="1800" height="1050" fill="#ffffff"/>
+  <text x="900" y="52" text-anchor="middle" class="title">ConvNeXt-Large U-Net for Crack / Craquelure Segmentation</text>
+  <text x="900" y="88" text-anchor="middle" class="subtitle">Tensor format: [Batch, Channel, Height, Width]</text>
+
+  <text x="400" y="185" text-anchor="middle" class="section">CONVNEXT-LARGE ENCODER · 196.23M</text>
+  <text x="1150" y="225" text-anchor="middle" class="section">U-NET DECODER · 7.04M PARAMETERS</text>
+
+  <!-- Input -->
+  <rect x="30" y="240" width="190" height="120" class="output"/>
+  <text x="125" y="282" text-anchor="middle" class="box-title">RGB Input</text>
+  <text x="125" y="320" text-anchor="middle" class="tensor">[1, 3, 512, 512]</text>
+  <path d="M220 300 H270" class="flow"/>
+
+  <!-- Encoder -->
+  <rect x="270" y="240" width="350" height="120" class="encoder"/>
+  <text x="445" y="276" text-anchor="middle" class="box-title">ConvNeXt Stem + Stage 0</text>
+  <text x="445" y="310" text-anchor="middle" class="tensor">[1, 192, 128, 128]</text>
+  <text x="445" y="338" text-anchor="middle" class="small">stem stride 4</text>
+
+  <rect x="270" y="425" width="350" height="120" class="encoder"/>
+  <text x="445" y="469" text-anchor="middle" class="box-title">ConvNeXt Stage 1</text>
+  <text x="445" y="507" text-anchor="middle" class="tensor">[1, 384, 64, 64]</text>
+
+  <rect x="270" y="610" width="350" height="120" class="encoder"/>
+  <text x="445" y="654" text-anchor="middle" class="box-title">ConvNeXt Stage 2</text>
+  <text x="445" y="692" text-anchor="middle" class="tensor">[1, 768, 32, 32]</text>
+
+  <rect x="270" y="795" width="350" height="120" class="encoder"/>
+  <text x="445" y="839" text-anchor="middle" class="box-title">ConvNeXt Stage 3 / Bottleneck</text>
+  <text x="445" y="877" text-anchor="middle" class="tensor">[1, 1536, 16, 16]</text>
+
+  <path d="M445 360 V425" class="up"/>
+  <path d="M445 545 V610" class="up"/>
+  <path d="M445 730 V795" class="up"/>
+
+  <!-- Decoder -->
+  <rect x="970" y="610" width="360" height="130" class="decoder"/>
+  <text x="1150" y="640" text-anchor="middle" class="box-title">Up ×2 + Concat Stage 2</text>
+  <text x="1150" y="674" text-anchor="middle" class="tensor">concat: [1, 2304, 32, 32]</text>
+  <text x="1150" y="710" text-anchor="middle" class="tensor">output: [1, 256, 32, 32]</text>
+
+  <rect x="970" y="425" width="360" height="130" class="decoder"/>
+  <text x="1150" y="455" text-anchor="middle" class="box-title">Up ×2 + Concat Stage 1</text>
+  <text x="1150" y="489" text-anchor="middle" class="tensor">concat: [1, 640, 64, 64]</text>
+  <text x="1150" y="525" text-anchor="middle" class="tensor">output: [1, 128, 64, 64]</text>
+
+  <rect x="970" y="240" width="360" height="130" class="decoder"/>
+  <text x="1150" y="270" text-anchor="middle" class="box-title">Up ×2 + Concat Stage 0</text>
+  <text x="1150" y="304" text-anchor="middle" class="tensor">concat: [1, 320, 128, 128]</text>
+  <text x="1150" y="340" text-anchor="middle" class="tensor">output: [1, 64, 128, 128]</text>
+
+  <rect x="970" y="105" width="240" height="90" class="decoder"/>
+  <text x="1090" y="137" text-anchor="middle" class="box-title">Up ×2 (no skip)</text>
+  <text x="1090" y="171" text-anchor="middle" class="tensor">[1, 32, 256, 256]</text>
+
+  <rect x="1250" y="105" width="240" height="90" class="decoder"/>
+  <text x="1370" y="137" text-anchor="middle" class="box-title">Up ×2 (no skip)</text>
+  <text x="1370" y="171" text-anchor="middle" class="tensor">[1, 16, 512, 512]</text>
+
+  <!-- Correct skip connections: only matching resolutions -->
+  <path d="M620 300 H970" class="skip"/>
+  <path d="M620 485 H970" class="skip"/>
+  <path d="M620 670 H970" class="skip"/>
+
+  <!-- Bottleneck into decoder and decoder upsampling path -->
+  <path d="M620 855 H900 V770 H1150 V740" class="up"/>
+  <path d="M1150 610 V555" class="up"/>
+  <path d="M1150 425 V370" class="up"/>
+  <path d="M1090 240 V195" class="up"/>
+  <path d="M1210 150 H1250" class="up"/>
+
+  <!-- No high-resolution skip callout -->
+  <rect x="650" y="115" width="275" height="90" fill="#fff8ef" stroke="#f47a16" stroke-width="3" stroke-dasharray="8 6" rx="12"/>
+  <text x="787" y="150" text-anchor="middle" class="box-title" fill="#d65a00">No 256×256 encoder skip</text>
+  <text x="787" y="180" text-anchor="middle" font-family="Arial, sans-serif" font-size="13" font-weight="600" fill="#d65a00">ConvNeXt stem starts at 1/4 resolution</text>
+
+  <!-- Output -->
+  <rect x="1530" y="105" width="240" height="90" class="output"/>
+  <text x="1650" y="137" text-anchor="middle" class="box-title">3×3 Segmentation Head</text>
+  <text x="1650" y="171" text-anchor="middle" class="tensor">[1, 3, 512, 512]</text>
+  <path d="M1490 150 H1530" class="head"/>
+
+  <rect x="1530" y="245" width="240" height="100" class="output"/>
+  <text x="1650" y="278" text-anchor="middle" class="box-title">Softmax + Argmax</text>
+  <text x="1650" y="315" text-anchor="middle" class="tensor">Mask: [1, 512, 512]</text>
+  <path d="M1650 195 V245" class="head"/>
+
+  <rect x="1510" y="395" width="270" height="170" fill="#fff" stroke="#172b4d" stroke-width="3" stroke-dasharray="8 6" rx="12"/>
+  <text x="1645" y="426" text-anchor="middle" class="box-title">Output classes</text>
+  <rect x="1545" y="447" width="24" height="24" fill="#111"/>
+  <text x="1585" y="466" class="legend">0 · Background</text>
+  <rect x="1545" y="487" width="24" height="24" fill="#ef3340"/>
+  <text x="1585" y="506" class="legend">1 · Crack</text>
+  <rect x="1545" y="527" width="24" height="24" fill="#ca2bd8"/>
+  <text x="1585" y="546" class="legend">2 · Craquelure</text>
+
+  <!-- Legend -->
+  <rect x="30" y="965" width="1740" height="65" fill="#f8fafc" stroke="#172b4d" stroke-width="2" rx="12"/>
+  <rect x="65" y="982" width="45" height="32" class="encoder" filter="none"/>
+  <text x="125" y="1005" class="legend">ConvNeXt encoder</text>
+  <rect x="335" y="982" width="45" height="32" class="decoder" filter="none"/>
+  <text x="395" y="1005" class="legend">U-Net decoder</text>
+  <path d="M615 998 H685" class="skip"/>
+  <text x="705" y="1005" class="legend">Skip + Concatenate</text>
+  <path d="M970 998 H1040" class="up"/>
+  <text x="1060" y="1005" class="legend">Upsample ×2</text>
+  <path d="M1280 998 H1350" class="head"/>
+  <text x="1370" y="1005" class="legend">3×3 convolution / output</text>
+</svg>

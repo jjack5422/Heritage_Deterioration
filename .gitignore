@@ -1,0 +1,61 @@
+# Virtual environments
+*_env/
+.venv/
+venv/
+
+# Python cache/build artifacts
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
+
+# Data and generated outputs
+_data/
+data/
+datasets/
+**/runs/
+model_comparisons/
+**/results/
+**/outputs/
+**/preds/
+**/checkpoints/
+
+# Model weights and large generated arrays
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.engine
+*.pkl
+*.npy
+
+# Generated media
+*.png
+*.jpg
+*.jpeg
+*.bmp
+*.tif
+*.tiff
+
+# Local/editor state
+.DS_Store
+.vscode/
+.claude/
+.codex/
+.agents/
+_agents/
+.agent-trash/
+
+# Local archives and source materials
+*.zip
+tmp/
+meeting/
+segment-anything-2/
+參考文獻/
+古蹟裂縫/
+
+# Tool caches
+.ruff_cache/
+
