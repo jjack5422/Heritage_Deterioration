@@ -1,12 +1,11 @@
-"""Leak-free OOF retest of trained crack/craquelure models on merged labels.
+"""Leak-free OOF evaluation of trained models on merged crack labels.
 
-The trained checkpoints use ``datasets/dataset_v2_3class`` folds.  This runner
-therefore keeps each checkpoint's original validation and outer-test members,
-but reads RGB images and merged masks from
-``datasets/dataset_clean_v2_merged_craquelure``.  The two datasets must have
-the same image-manifest hash.  Other deterioration labels in the merged masks
-are excluded from binary scoring; only raw label 0 (background) and raw label
-1 (merged crack/craquelure) are valid.
+Legacy checkpoints keep their ``datasets/dataset_v2_3class`` validation and
+outer-test members.  The binary SAM2-Adapter is trained directly on
+``datasets/dataset_clean_v2_merged_craquelure`` and therefore reuses that
+dataset's folds.  Other deterioration labels in the merged masks are excluded
+from binary scoring; only raw label 0 (background) and raw label 1 (merged
+crack/craquelure) are valid.
 """
 
 from __future__ import annotations
@@ -31,7 +30,7 @@ import numpy as np
 import torch
 import torch.nn.functional as F
 from PIL import Image
-from torch import Tensor, nn
+from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
@@ -116,14 +115,20 @@ MODEL_SPECS: dict[str, ModelSpec] = {
     "sam2-adapter": ModelSpec(
         key="sam2-adapter",
         project="sam2_adapter",
-        source_experiment="2026-08-20_sam2-adapter-hiera-large_dual-expert_512_80ep_seed42",
-        experiment_id="2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42",
+        source_experiment="2026-08-21_sam2-adapter-hiera-large_merged-crack_512_80ep_seed42",
+        experiment_id="2026-08-21_merged-crack_oof-retest_sam2-adapter_seed42",
         kind="sam2_adapter",
-        history_experts=("crack", "craquelure"),
-        checkpoint_experts=("crack", "craquelure"),
+        history_experts=("foreground",),
+        checkpoint_experts=("foreground",),
         batch_size=1,
     ),
 }
+
+
+def model_source_dataset(spec: ModelSpec, merged: Path, legacy: Path) -> Path:
+    """Return the split authority that selected a model's checkpoints."""
+
+    return merged if spec.kind == "sam2_adapter" else legacy
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -382,56 +387,46 @@ class SAM2AdapterPredictor:
         from sam2_adapter.h0_core import load_trainable_state_dict
 
         base_hash = _sha256(base_checkpoint)
-        self.models: dict[str, nn.Module] = {}
         self.device = device
-        records: list[dict[str, Any]] = []
-        epochs: list[int] = []
-        for expert in ("crack", "craquelure"):
-            path = checkpoints[expert]
-            payload = torch.load(path, map_location="cpu", weights_only=False)
-            if payload.get("expert") != expert:
-                raise ValueError(f"SAM2-Adapter expert mismatch: {path}")
-            if payload.get("base_checkpoint_sha256") != base_hash:
-                raise ValueError("SAM2-Adapter base checkpoint hash mismatch")
-            adapter = payload.get("adapter", {})
-            model = SAM2AdapterMaskDecoder(
-                checkpoint=base_checkpoint,
-                config=str(payload.get("sam2_config", "configs/sam2.1/sam2.1_hiera_l.yaml")),
-                image_size=int(payload.get("image_size", IMAGE_SIZE)),
-                device=device,
-                scale_factor=int(adapter.get("scale_factor", 32)),
-                highpass_rate=float(adapter.get("highpass_rate", 0.25)),
-            )
-            load_trainable_state_dict(model, payload["adaptation_state"])
-            model.eval()
-            self.models[expert] = model
-            epoch = int(payload["epoch"])
-            epochs.append(epoch)
-            records.append(
-                {
-                    "role": expert,
-                    "path": str(path.resolve()),
-                    "sha256": _sha256(path),
-                    "selected_epoch": epoch,
-                    "source_manifest_hash": payload.get("manifest_hash"),
-                    "base_checkpoint": str(base_checkpoint.resolve()),
-                    "base_checkpoint_sha256": base_hash,
-                }
-            )
-        self.selected_epoch = max(epochs)
-        self.checkpoint_records = records
+        path = checkpoints["foreground"]
+        payload = torch.load(path, map_location="cpu", weights_only=False)
+        if payload.get("task") != "foreground":
+            raise ValueError(f"SAM2-Adapter task mismatch: {path}")
+        if payload.get("base_checkpoint_sha256") != base_hash:
+            raise ValueError("SAM2-Adapter base checkpoint hash mismatch")
+        adapter = payload.get("adapter", {})
+        self.model = SAM2AdapterMaskDecoder(
+            checkpoint=base_checkpoint,
+            config=str(payload.get("sam2_config", "configs/sam2.1/sam2.1_hiera_l.yaml")),
+            image_size=int(payload.get("image_size", IMAGE_SIZE)),
+            device=device,
+            scale_factor=int(adapter.get("scale_factor", 32)),
+            highpass_rate=float(adapter.get("highpass_rate", 0.25)),
+        )
+        load_trainable_state_dict(self.model, payload["adaptation_state"])
+        self.model.eval()
+        self.selected_epoch = int(payload["epoch"])
+        self.checkpoint_records = [
+            {
+                "role": "foreground",
+                "path": str(path.resolve()),
+                "sha256": _sha256(path),
+                "selected_epoch": self.selected_epoch,
+                "source_manifest_hash": payload.get("manifest_hash"),
+                "base_checkpoint": str(base_checkpoint.resolve()),
+                "base_checkpoint_sha256": base_hash,
+            }
+        ]
 
     @torch.no_grad()
     def probability(self, images: Tensor) -> Tensor:
         images = images.to(self.device, non_blocking=True)
-        probabilities = []
         with _autocast(self.device):
-            for expert in ("crack", "craquelure"):
-                probabilities.append(torch.sigmoid(self.models[expert](images)[:, 0]).float())
-        return torch.maximum(probabilities[0], probabilities[1])
+            probability = torch.sigmoid(self.model(images)[:, 0]).float()
+        return probability
 
     def close(self) -> None:
-        self.models.clear()
+        del self.model
 
 
 def _checkpoint_paths(spec: ModelSpec, fold: int) -> dict[str, Path]:
@@ -701,7 +696,7 @@ def _write_fold_metadata(
                 "unet": "softmax P(crack) + P(craquelure)",
                 "segformer": "softmax P(crack) + P(craquelure)",
                 "sam2_sac": "sigmoid(union logit)",
-                "sam2_adapter": "max(sigmoid(crack logit), sigmoid(craquelure logit))",
+                "sam2_adapter": "sigmoid(merged foreground logit)",
             }[spec.kind],
             "training_curve_source": "copied as scalar values from source epochs.csv; no retraining",
             "command": [sys.executable, *sys.argv],
@@ -961,10 +956,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     torch.set_float32_matmul_precision("high")
     summaries = {}
     for key in requested:
+        spec = MODEL_SPECS[key]
+        split_dataset = model_source_dataset(spec, dataset, source_dataset)
+        _validate_dataset_pair(dataset, split_dataset)
         summaries[key] = run_model(
-            MODEL_SPECS[key],
+            spec,
             dataset=dataset,
-            source_dataset=source_dataset,
+            source_dataset=split_dataset,
             base_checkpoint=base_checkpoint,
             folds=args.folds,
             device=device,

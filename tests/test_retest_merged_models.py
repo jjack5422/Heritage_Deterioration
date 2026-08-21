@@ -6,10 +6,27 @@ from pathlib import Path
 import numpy as np
 
 from scripts.retest_merged_models import (
+    MODEL_SPECS,
+    model_source_dataset,
     merged_binary_target,
     merged_foreground_probability,
     source_oof_partitions,
 )
+
+
+def test_sam2_adapter_uses_one_merged_foreground_checkpoint() -> None:
+    spec = MODEL_SPECS["sam2-adapter"]
+
+    assert spec.history_experts == ("foreground",)
+    assert spec.checkpoint_experts == ("foreground",)
+
+
+def test_sam2_adapter_reuses_the_merged_dataset_split() -> None:
+    merged = Path("merged")
+    legacy = Path("legacy")
+
+    assert model_source_dataset(MODEL_SPECS["sam2-adapter"], merged, legacy) == merged
+    assert model_source_dataset(MODEL_SPECS["sam2-sac"], merged, legacy) == legacy
 
 
 def test_merged_target_scores_only_background_and_merged_craquelure() -> None:
@@ -63,4 +80,3 @@ def test_source_oof_partitions_use_checkpoint_split_not_target_fold(tmp_path: Pa
     assert train == ()
     assert validation == ("c.png", "d.png")
     assert outer_test == ("a.png", "b.png")
-
