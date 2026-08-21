@@ -7,7 +7,11 @@ from pathlib import Path
 from sam2_sac.data import H0TileDataset, prepare_data_plan
 
 
-DATASET_ROOT = Path(__file__).resolve().parents[2] / "datasets" / "dataset_v2_3class"
+DATASET_ROOT = (
+    Path(__file__).resolve().parents[2]
+    / "datasets"
+    / "dataset_clean_v2_merged_craquelure"
+)
 
 
 def test_fold_zero_is_panel_disjoint_and_uses_next_fold_for_validation() -> None:
@@ -23,11 +27,11 @@ def test_fold_zero_is_panel_disjoint_and_uses_next_fold_for_validation() -> None
     assert not (plan.groups(plan.val) & plan.groups(plan.test))
 
 
-def test_dataset_keeps_the_512_label_ids_and_normalizes_rgb() -> None:
+def test_dataset_keeps_the_merged_label_ids_and_normalizes_rgb() -> None:
     plan = prepare_data_plan(DATASET_ROOT, outer_fold=0)
     item = H0TileDataset(plan, plan.train[:1], train_augmentation=False)[0]
 
     assert item["image"].shape == (3, 512, 512)
     assert item["mask"].shape == (512, 512)
-    assert set(item["mask"].unique().tolist()).issubset({0, 1, 2, 255})
+    assert set(item["mask"].unique().tolist()).issubset({0, 1, 2, 3, 4, 5, 255})
     assert item["name"] == plan.train[0]

@@ -1,4 +1,4 @@
-"""Train SAM2-Adapter Crack/Craquelure one-vs-rest experts on nested five-fold CV."""
+"""Train one binary merged-crack SAM2-Adapter with nested five-fold CV."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import numpy as np
 import torch
 from torch import Tensor
 from torch.optim import AdamW
@@ -18,7 +17,7 @@ from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-from sam2_adapter.adapter_core import Expert, dual_expert_labels, make_expert_target
+from sam2_adapter.adapter_core import make_binary_target
 from sam2_adapter.adapter_model import SAM2AdapterMaskDecoder
 from sam2_adapter.data import H0DataPlan, denormalize_image, prepare_data_plan
 from sam2_adapter.h0_core import (
@@ -27,7 +26,7 @@ from sam2_adapter.h0_core import (
     model_parameter_counts,
     trainable_state_dict,
 )
-from sam2_adapter.metrics import binary_summary, hierarchy_summary
+from sam2_adapter.metrics import binary_summary
 from sam2_adapter.reporting import (
     EpochReporter,
     RunLayout,
@@ -50,12 +49,13 @@ from sam2_adapter.runtime import (
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
-DEFAULT_EXPERIMENT = "2026-08-20_sam2-adapter-hiera-large_dual-expert_512_80ep_seed42"
+TASK_NAME = "foreground"
+FIXED_THRESHOLD = 0.5
+DEFAULT_EXPERIMENT = "2026-08-21_sam2-adapter-hiera-large_merged-crack_512_80ep_seed42"
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--experts", nargs="+", choices=("crack", "craquelure"), default=["crack", "craquelure"])
     parser.add_argument("--folds", type=int, nargs="+", default=[0, 1, 2, 3, 4])
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
@@ -87,13 +87,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         parser.error("--highpass-rate must be in (0, 1)")
     if any(fold not in range(5) for fold in args.folds) or len(set(args.folds)) != len(args.folds):
         parser.error("--folds must contain unique values from 0 through 4")
-    if len(set(args.experts)) != len(args.experts):
-        parser.error("--experts must not contain duplicates")
     return args
 
 
-def _run_dir(experiment_id: str, expert: Expert, fold: int) -> Path:
-    return PROJECT_ROOT / "runs" / experiment_id / "5fold" / expert / f"fold{fold}"
+def _run_dir(experiment_id: str, fold: int) -> Path:
+    return PROJECT_ROOT / "runs" / experiment_id / "5fold" / TASK_NAME / f"fold{fold}"
 
 
 def _build_model(args: argparse.Namespace, device: torch.device) -> SAM2AdapterMaskDecoder:
@@ -107,11 +105,11 @@ def _build_model(args: argparse.Namespace, device: torch.device) -> SAM2AdapterM
     )
 
 
-def _counts(logits: Tensor, target: Tensor, *, ignore_value: int, threshold: float) -> tuple[int, int, int]:
+def _counts(logits: Tensor, target: Tensor, *, ignore_value: int) -> tuple[int, int, int]:
     if target.ndim == 3:
         target = target.unsqueeze(1)
     valid = target != ignore_value
-    prediction = torch.sigmoid(logits) >= threshold
+    prediction = torch.sigmoid(logits) >= FIXED_THRESHOLD
     actual = target == 1
     return (
         int((prediction & actual & valid).sum().item()),
@@ -130,26 +128,21 @@ def _evaluate(
     model: SAM2AdapterMaskDecoder,
     loader: DataLoader[dict[str, Tensor | str]],
     *,
-    expert: Expert,
     plan: H0DataPlan,
     device: torch.device,
     amp: bool,
     dice_weight: float,
-    threshold: float,
     layout: RunLayout | None = None,
-    collect_probabilities: bool = False,
 ) -> dict[str, Any]:
     model.eval()
     losses: list[float] = []
     panel_counts: dict[str, tuple[int, int, int]] = {}
     rows: list[dict[str, Any]] = []
-    probabilities: list[np.ndarray] = []
-    targets: list[np.ndarray] = []
     with torch.no_grad():
         for batch in loader:
             images = _batch_tensor(batch, "image", device)
             source = _batch_tensor(batch, "mask", device).long()
-            target = make_expert_target(source, expert=expert, ignore_value=plan.ignore_value)
+            target = make_binary_target(source, ignore_value=plan.ignore_value)
             with _autocast(device, amp):
                 logits = model(images)
                 loss = binary_bce_dice_loss(
@@ -162,17 +155,13 @@ def _evaluate(
                     logits[index : index + 1],
                     target[index : index + 1],
                     ignore_value=plan.ignore_value,
-                    threshold=threshold,
                 )
                 panel_counts[group] = _merge(panel_counts.get(group), count)
                 valid = target[index] != plan.ignore_value
-                if collect_probabilities:
-                    probabilities.append(torch.sigmoid(logits[index, 0])[valid].float().cpu().numpy())
-                    targets.append((target[index][valid] == 1).cpu().numpy())
                 if layout is not None:
                     target_binary = ((target[index] == 1) & valid).cpu().numpy()
                     prediction_binary = (
-                        (torch.sigmoid(logits[index, 0]) >= threshold) & valid
+                        (torch.sigmoid(logits[index, 0]) >= FIXED_THRESHOLD) & valid
                     ).cpu().numpy()
                     rgb = (
                         denormalize_image(images[index]).permute(1, 2, 0).mul(255).round().to(torch.uint8).numpy()
@@ -184,7 +173,7 @@ def _evaluate(
                             input_rgb=rgb,
                             target=target_binary,
                             prediction=prediction_binary,
-                            target_class=expert,
+                            target_class=TASK_NAME,
                         )
                     )
     result: dict[str, Any] = {
@@ -192,44 +181,7 @@ def _evaluate(
         **binary_summary(panel_counts),
         "per_image_rows": rows,
     }
-    if collect_probabilities:
-        result["probability"] = np.concatenate(probabilities)
-        result["target"] = np.concatenate(targets)
     return result
-
-
-def _optimal_threshold(probability: np.ndarray, target: np.ndarray) -> dict[str, float | int]:
-    """Select validation F1 threshold in O(pixels + bins), never using outer test."""
-
-    bins = 1001
-    positive = np.histogram(probability[target], bins=bins, range=(0.0, 1.0))[0]
-    negative = np.histogram(probability[~target], bins=bins, range=(0.0, 1.0))[0]
-    tp_from = np.cumsum(positive[::-1], dtype=np.int64)[::-1]
-    fp_from = np.cumsum(negative[::-1], dtype=np.int64)[::-1]
-    total_positive = int(positive.sum())
-    best: tuple[float, float, float, int] | None = None
-    best_record: dict[str, float | int] = {}
-    for index in range(50, 951):
-        tp = int(tp_from[index])
-        fp = int(fp_from[index])
-        fn = total_positive - tp
-        f1 = 2 * tp / (2 * tp + fp + fn) if total_positive else 0.0
-        iou = tp / (tp + fp + fn) if total_positive else 0.0
-        precision = tp / (tp + fp) if tp + fp else 0.0
-        rank = (f1, iou, precision, index)
-        if best is None or rank > best:
-            best = rank
-            best_record = {
-                "threshold": index / 1000.0,
-                "f1": f1,
-                "iou": iou,
-                "precision": precision,
-                "recall": tp / total_positive if total_positive else 0.0,
-                "tp": tp,
-                "fp": fp,
-                "fn": fn,
-            }
-    return best_record
 
 
 def _train_epoch(
@@ -237,7 +189,6 @@ def _train_epoch(
     loader: DataLoader[dict[str, Tensor | str]],
     optimizer: AdamW,
     *,
-    expert: Expert,
     plan: H0DataPlan,
     device: torch.device,
     amp: bool,
@@ -251,7 +202,7 @@ def _train_epoch(
     for batch_index, batch in enumerate(loader, start=1):
         images = _batch_tensor(batch, "image", device)
         source = _batch_tensor(batch, "mask", device).long()
-        target = make_expert_target(source, expert=expert, ignore_value=plan.ignore_value)
+        target = make_binary_target(source, ignore_value=plan.ignore_value)
         with _autocast(device, amp):
             loss = binary_bce_dice_loss(
                 model(images), target, ignore_value=plan.ignore_value, dice_weight=dice_weight
@@ -270,7 +221,6 @@ def _train_epoch(
 def _checkpoint_payload(
     model: SAM2AdapterMaskDecoder,
     *,
-    expert: Expert,
     epoch: int,
     best_validation_loss: float,
     args: argparse.Namespace,
@@ -279,8 +229,8 @@ def _checkpoint_payload(
     optimizer: AdamW,
 ) -> dict[str, Any]:
     return {
-        "schema_version": 1,
-        "expert": expert,
+        "schema_version": 2,
+        "task": TASK_NAME,
         "epoch": epoch,
         "best_validation_loss": best_validation_loss,
         "base_checkpoint": str(args.checkpoint),
@@ -302,12 +252,11 @@ def _load_checkpoint(
     model: SAM2AdapterMaskDecoder,
     path: Path,
     *,
-    expected_expert: Expert,
     checkpoint_sha256: str,
 ) -> dict[str, Any]:
     payload = torch.load(path, map_location="cpu", weights_only=False)
-    if payload.get("expert") != expected_expert:
-        raise ValueError(f"checkpoint expert mismatch: {path}")
+    if payload.get("task") != TASK_NAME:
+        raise ValueError(f"checkpoint task mismatch: {path}")
     if payload.get("base_checkpoint_sha256") != checkpoint_sha256:
         raise ValueError("base SAM2 checkpoint hash does not match")
     load_trainable_state_dict(model, payload["adaptation_state"])
@@ -319,7 +268,6 @@ def _write_metadata(
     *,
     args: argparse.Namespace,
     plan: H0DataPlan,
-    expert: Expert,
     model: SAM2AdapterMaskDecoder,
     checkpoint_sha256: str,
 ) -> None:
@@ -357,41 +305,44 @@ def _write_metadata(
         layout.config / "run.json",
         {
             "experiment_id": args.experiment_id,
-            "expert": expert,
+            "task": TASK_NAME,
             "outer_fold": plan.outer_fold,
             "inner_fold": plan.inner_fold,
             "selection_metric": "validation BCEWithLogits + 0.65 soft Dice",
             "selection_scope": "validation only; outer test excluded",
-            "threshold_scope": "inner validation only",
+            "threshold": FIXED_THRESHOLD,
+            "threshold_source": "pre-registered merged dataset evaluation contract",
             "max_epochs": args.epochs,
             "early_stopping": False,
             "command": [sys.executable, *sys.argv],
         },
     )
     append_log(layout, f"created={datetime.now().astimezone().isoformat(timespec='seconds')}")
-    append_log(layout, f"expert={expert} outer_fold={plan.outer_fold} inner_fold={plan.inner_fold}")
+    append_log(layout, f"task={TASK_NAME} outer_fold={plan.outer_fold} inner_fold={plan.inner_fold}")
 
 
-def _update_experiment_info(args: argparse.Namespace, plan: H0DataPlan, expert: Expert, layout: RunLayout) -> None:
+def _update_experiment_info(args: argparse.Namespace, plan: H0DataPlan, layout: RunLayout) -> None:
     root = PROJECT_ROOT / "runs" / args.experiment_id
     path = root / "info" / "experiment.json"
     existing = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     folds = dict(existing.get("folds", {}))
-    folds[expert] = sorted(set(folds.get(expert, [])) | {plan.outer_fold})
+    folds[TASK_NAME] = sorted(set(folds.get(TASK_NAME, [])) | {plan.outer_fold})
     runs = sorted(set(existing.get("runs", [])) | {layout.root.relative_to(root).as_posix()})
     write_json(
         path,
         {
-            "schema_version": 1,
+            "schema_version": 2,
             "experiment_id": args.experiment_id,
             "layout": "5fold",
             "fold_count": 5,
-            "experts": ["crack", "craquelure"],
+            "experts": [TASK_NAME],
             "folds": folds,
             "runs": runs,
             "dataset_root": str(plan.root),
             "manifest_hash": plan.manifest_hash,
-            "fusion": "independent one-vs-rest thresholds; overlap resolved by threshold margin",
+            "task": "binary merged crack/craquelure foreground segmentation",
+            "threshold": FIXED_THRESHOLD,
+            "threshold_source": "pre-registered constant; no threshold search",
             "created_at": existing.get("created_at", datetime.now().astimezone().isoformat()),
             "updated_at": datetime.now().astimezone().isoformat(),
         },
@@ -405,15 +356,14 @@ def _monitor(args: argparse.Namespace, message: str) -> None:
         handle.write(f"- {datetime.now().astimezone().isoformat(timespec='seconds')} — {message}\n")
 
 
-def _train_expert(
+def _train_fold(
     args: argparse.Namespace,
     *,
     plan: H0DataPlan,
-    expert: Expert,
     device: torch.device,
     checkpoint_sha256: str,
 ) -> Path:
-    output = _run_dir(args.experiment_id, expert, plan.outer_fold)
+    output = _run_dir(args.experiment_id, plan.outer_fold)
     if output.exists() and any(output.iterdir()):
         best = output / "artifacts" / "checkpoints" / "best.pt"
         if args.allow_existing and best.is_file() and "completed" in (output / "logs" / "train.log").read_text(encoding="utf-8"):
@@ -421,8 +371,8 @@ def _train_expert(
         raise FileExistsError(f"refusing to overwrite existing run: {output}")
     layout = RunLayout.create(output)
     model = _build_model(args, device)
-    _write_metadata(layout, args=args, plan=plan, expert=expert, model=model, checkpoint_sha256=checkpoint_sha256)
-    _update_experiment_info(args, plan, expert, layout)
+    _write_metadata(layout, args=args, plan=plan, model=model, checkpoint_sha256=checkpoint_sha256)
+    _update_experiment_info(args, plan, layout)
     optimizer = AdamW(
         (parameter for parameter in model.parameters() if parameter.requires_grad),
         lr=args.learning_rate,
@@ -438,14 +388,13 @@ def _train_expert(
     best_epoch = 0
     finalized = False
     torch.cuda.reset_peak_memory_stats(device)
-    _monitor(args, f"START fold{plan.outer_fold} {expert}")
+    _monitor(args, f"START fold{plan.outer_fold} {TASK_NAME}")
     try:
         for epoch in range(1, args.epochs + 1):
             train_loss = _train_epoch(
                 model,
                 train_loader,
                 optimizer,
-                expert=expert,
                 plan=plan,
                 device=device,
                 amp=args.amp,
@@ -456,12 +405,10 @@ def _train_expert(
             validation = _evaluate(
                 model,
                 validation_loader,
-                expert=expert,
                 plan=plan,
                 device=device,
                 amp=args.amp,
                 dice_weight=args.dice_weight,
-                threshold=0.5,
             )
             micro = validation["tile_micro"]
             learning_rate = float(optimizer.param_groups[0]["lr"])
@@ -476,7 +423,6 @@ def _train_expert(
                 learning_rate=learning_rate,
             )
             values = dict(
-                expert=expert,
                 epoch=epoch,
                 best_validation_loss=best_loss,
                 args=args,
@@ -495,59 +441,40 @@ def _train_expert(
                 f"val_loss={validation['loss']:.6f} val_f1={micro['mf1'] or 0:.4f} "
                 f"best_epoch={best_epoch} lr={learning_rate:.8f}"
             )
-            print(f"fold{plan.outer_fold} {expert} {message}", flush=True)
+            print(f"fold{plan.outer_fold} {TASK_NAME} {message}", flush=True)
             append_log(layout, message)
             scheduler.step()
         selected = _load_checkpoint(
             model,
             layout.checkpoints / "best.pt",
-            expected_expert=expert,
             checkpoint_sha256=checkpoint_sha256,
         )
-        calibration = _evaluate(
-            model,
-            validation_loader,
-            expert=expert,
-            plan=plan,
-            device=device,
-            amp=args.amp,
-            dice_weight=args.dice_weight,
-            threshold=0.5,
-            collect_probabilities=True,
-        )
-        threshold_record = _optimal_threshold(calibration.pop("probability"), calibration.pop("target"))
-        threshold = float(threshold_record["threshold"])
-        write_json(layout.metrics / "validation_threshold.json", {"scope": "inner_validation_only", **threshold_record})
         validation_selected = _evaluate(
             model,
             validation_loader,
-            expert=expert,
             plan=plan,
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
-            threshold=threshold,
             layout=layout,
         )
         outer = _evaluate(
             model,
             outer_loader,
-            expert=expert,
             plan=plan,
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
-            threshold=threshold,
         )
         peak_mib = torch.cuda.max_memory_allocated(device) / 1024**2
         outer_record = {
-            "scope": "outer_test_not_used_for_selection_or_threshold",
-            "expert": expert,
+            "scope": "outer_test_not_used_for_checkpoint_selection",
+            "task": TASK_NAME,
             "selected_checkpoint": "artifacts/checkpoints/best.pt",
             "selected_epoch": int(selected["epoch"]),
             "selection_metric": "validation BCEWithLogits + 0.65 soft Dice",
-            "threshold": threshold,
-            "threshold_scope": "inner_validation_only",
+            "threshold": FIXED_THRESHOLD,
+            "threshold_source": "pre-registered merged dataset evaluation contract",
             "loss": outer["loss"],
             "tile_micro": outer["tile_micro"],
             "expert_panel_macro": outer["expert_panel_macro"],
@@ -566,8 +493,8 @@ def _train_expert(
             outer_test_metrics=outer_record,
         )
         finalized = True
-        append_log(layout, f"completed selected_epoch={best_epoch} best_val_loss={best_loss:.6f} threshold={threshold:.3f}")
-        _monitor(args, f"COMPLETE fold{plan.outer_fold} {expert}: best_epoch={best_epoch}, threshold={threshold:.3f}")
+        append_log(layout, f"completed selected_epoch={best_epoch} best_val_loss={best_loss:.6f}")
+        _monitor(args, f"COMPLETE fold{plan.outer_fold} {TASK_NAME}: best_epoch={best_epoch}")
         return layout.checkpoints / "best.pt"
     finally:
         if not finalized:
@@ -577,69 +504,13 @@ def _train_expert(
         torch.cuda.empty_cache()
 
 
-def _fused_evaluation(
-    args: argparse.Namespace,
-    *,
-    plan: H0DataPlan,
-    device: torch.device,
-    checkpoint_sha256: str,
-) -> None:
-    checkpoints = {
-        expert: _run_dir(args.experiment_id, expert, plan.outer_fold) / "artifacts" / "checkpoints" / "best.pt"
-        for expert in ("crack", "craquelure")
-    }
-    if not all(path.is_file() for path in checkpoints.values()):
-        return
-    thresholds = {
-        expert: float(json.loads((_run_dir(args.experiment_id, expert, plan.outer_fold) / "metrics" / "validation_threshold.json").read_text())["threshold"])
-        for expert in ("crack", "craquelure")
-    }
-    crack_model = _build_model(args, device)
-    craquelure_model = _build_model(args, device)
-    _load_checkpoint(crack_model, checkpoints["crack"], expected_expert="crack", checkpoint_sha256=checkpoint_sha256)
-    _load_checkpoint(craquelure_model, checkpoints["craquelure"], expected_expert="craquelure", checkpoint_sha256=checkpoint_sha256)
-
-    def evaluate(names: tuple[str, ...]) -> dict[str, Any]:
-        loader = _make_loader(plan, names, train=False, args=args, batch_size=1)
-        targets: list[np.ndarray] = []
-        predictions: list[np.ndarray] = []
-        crack_model.eval()
-        craquelure_model.eval()
-        with torch.no_grad():
-            for batch in loader:
-                images = _batch_tensor(batch, "image", device)
-                with _autocast(device, args.amp):
-                    crack_probability = torch.sigmoid(crack_model(images))
-                    craquelure_probability = torch.sigmoid(craquelure_model(images))
-                labels = dual_expert_labels(
-                    crack_probability,
-                    craquelure_probability,
-                    crack_threshold=thresholds["crack"],
-                    craquelure_threshold=thresholds["craquelure"],
-                )
-                targets.append(_batch_tensor(batch, "mask", device).cpu().numpy())
-                predictions.append(labels[:, 0].cpu().numpy())
-        return hierarchy_summary(
-            np.concatenate(targets), np.concatenate(predictions), ignore_value=plan.ignore_value
-        )
-
-    destination = _run_dir(args.experiment_id, "craquelure", plan.outer_fold) / "metrics"
-    write_json(destination / "dual_expert_validation.json", {"thresholds": thresholds, **evaluate(plan.val)})
-    write_json(
-        destination / "dual_expert_outer_test.json",
-        {"scope": "outer_test_not_used_for_selection_or_threshold", "thresholds": thresholds, **evaluate(plan.test)},
-    )
-    _monitor(args, f"FUSION fold{plan.outer_fold} complete with thresholds={thresholds}")
-    torch.cuda.empty_cache()
-
-
 def _smoke_test(args: argparse.Namespace, plan: H0DataPlan, device: torch.device) -> None:
     model = _build_model(args, device)
     loader = _make_loader(plan, plan.train, train=True, args=args)
     batch = next(iter(loader))
     images = _batch_tensor(batch, "image", device)
     source = _batch_tensor(batch, "mask", device).long()
-    target = make_expert_target(source, expert=args.experts[0], ignore_value=plan.ignore_value)
+    target = make_binary_target(source, ignore_value=plan.ignore_value)
     torch.cuda.reset_peak_memory_stats(device)
     with _autocast(device, args.amp):
         loss = binary_bce_dice_loss(
@@ -682,22 +553,13 @@ def main(argv: list[str] | None = None) -> int:
         _smoke_test(args, first_plan, device)
         return 0
     print(
-        f"SAM2-Adapter start folds={args.folds} experts={args.experts} experiment={args.experiment_id}",
+        f"SAM2-Adapter start folds={args.folds} task={TASK_NAME} experiment={args.experiment_id}",
         flush=True,
     )
-    _monitor(args, f"EXPERIMENT START folds={args.folds} experts={args.experts}")
+    _monitor(args, f"EXPERIMENT START folds={args.folds} task={TASK_NAME}")
     for fold in args.folds:
         plan = prepare_data_plan(args.dataset, outer_fold=fold)
-        for expert_value in args.experts:
-            expert: Expert = expert_value
-            _train_expert(
-                args,
-                plan=plan,
-                expert=expert,
-                device=device,
-                checkpoint_sha256=checkpoint_sha256,
-            )
-        _fused_evaluation(
+        _train_fold(
             args,
             plan=plan,
             device=device,

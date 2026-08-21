@@ -6,7 +6,7 @@ from sam2_adapter.train_adapter import parse_args
 def test_adapter_defaults_match_the_predeclared_primary_experiment() -> None:
     args = parse_args([])
 
-    assert args.experts == ["crack", "craquelure"]
+    assert not hasattr(args, "experts")
     assert args.folds == [0, 1, 2, 3, 4]
     assert args.image_size == 512
     assert args.epochs == 80
@@ -18,9 +18,8 @@ def test_adapter_defaults_match_the_predeclared_primary_experiment() -> None:
     assert args.highpass_rate == 0.25
 
 
-def test_adapter_cli_can_select_a_single_fold_expert_for_recovery() -> None:
-    args = parse_args(["--folds", "3", "--experts", "craquelure", "--allow-existing"])
+def test_adapter_cli_can_select_a_single_fold_for_recovery() -> None:
+    args = parse_args(["--folds", "3", "--allow-existing"])
 
     assert args.folds == [3]
-    assert args.experts == ["craquelure"]
     assert args.allow_existing is True

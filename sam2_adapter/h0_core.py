@@ -11,57 +11,9 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from pathlib import Path
-from typing import Literal
-
 import torch
 import torch.nn.functional as F
 from torch import Tensor, nn
-
-
-HIERARCHY_CLASS_NAMES = ("background", "crack", "craquelure")
-Stage = Literal["union", "type"]
-
-
-def make_stage_target(source_mask: Tensor, *, stage: Stage, ignore_value: int) -> Tensor:
-    """Map 0/background, 1/crack, 2/craquelure to one binary H0 task.
-
-    The union stage learns deterioration versus background.  The type stage is
-    supervised only inside ground-truth deterioration, so a type decision can
-    never manufacture a foreground pixel in the final hierarchy.
-    """
-
-    target = torch.full_like(source_mask, ignore_value)
-    if stage == "union":
-        target[source_mask == 0] = 0
-        target[(source_mask == 1) | (source_mask == 2)] = 1
-    elif stage == "type":
-        target[source_mask == 1] = 1
-        target[source_mask == 2] = 0
-    else:
-        raise ValueError(f"unknown H0 stage: {stage!r}")
-    return target
-
-
-def hierarchy_probabilities(union_logits: Tensor, type_logits: Tensor) -> Tensor:
-    """Return normalized P(background, crack, craquelure) for the H0 hierarchy."""
-
-    if union_logits.shape != type_logits.shape:
-        raise ValueError(
-            "union and type logits must have identical shapes, got "
-            f"{tuple(union_logits.shape)} and {tuple(type_logits.shape)}"
-        )
-    if union_logits.ndim != 4 or union_logits.shape[1] != 1:
-        raise ValueError("H0 logits must have shape Bx1xHxW")
-    union_probability = torch.sigmoid(union_logits)
-    crack_probability = union_probability * torch.sigmoid(type_logits)
-    craquelure_probability = union_probability * (1.0 - torch.sigmoid(type_logits))
-    return torch.cat((1.0 - union_probability, crack_probability, craquelure_probability), dim=1)
-
-
-def hierarchy_labels(union_logits: Tensor, type_logits: Tensor) -> Tensor:
-    """Return an exclusive 0/background, 1/crack, 2/craquelure label map."""
-
-    return hierarchy_probabilities(union_logits, type_logits).argmax(dim=1)
 
 
 def binary_bce_dice_loss(

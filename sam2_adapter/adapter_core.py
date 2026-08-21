@@ -1,4 +1,4 @@
-"""SAM2-Adapter primitives and dual-expert fusion.
+"""SAM2-Adapter primitives for binary merged-crack segmentation.
 
 The prompt generator follows the SAM2-Adapter paper/code contract: an FFT
 high-pass pyramid is added to a projection of the frozen Hiera tokens, each
@@ -8,27 +8,18 @@ within a Hiera stage.
 
 from __future__ import annotations
 
-from typing import Literal, Sequence
+from typing import Sequence
 
 import torch
 from torch import Tensor, nn
 
 
-Expert = Literal["crack", "craquelure"]
-
-
-def make_expert_target(source_mask: Tensor, *, expert: Expert, ignore_value: int) -> Tensor:
-    """Map 0/1/2/ignore labels to one-vs-rest supervision for an expert."""
+def make_binary_target(source_mask: Tensor, *, ignore_value: int) -> Tensor:
+    """Map merged labels to binary supervision, excluding other deterioration classes."""
 
     target = torch.full_like(source_mask, ignore_value)
-    valid = source_mask != ignore_value
-    target[valid] = 0
-    if expert == "crack":
-        target[source_mask == 1] = 1
-    elif expert == "craquelure":
-        target[source_mask == 2] = 1
-    else:
-        raise ValueError(f"unknown expert: {expert!r}")
+    target[source_mask == 0] = 0
+    target[source_mask == 1] = 1
     return target
 
 
@@ -183,29 +174,3 @@ class StageAdapterBank(nn.Module):
                 f"adapter prompt/token shape mismatch: {tuple(prompt.shape)} vs {tuple(tokens.shape)}"
             )
         return tokens + prompt
-
-
-def dual_expert_labels(
-    crack_probability: Tensor,
-    craquelure_probability: Tensor,
-    *,
-    crack_threshold: float,
-    craquelure_threshold: float,
-) -> Tensor:
-    """Fuse calibrated independent probabilities into exclusive 0/1/2 labels."""
-
-    if crack_probability.shape != craquelure_probability.shape:
-        raise ValueError("dual-expert probability maps must have identical shapes")
-    if not 0.0 <= crack_threshold <= 1.0 or not 0.0 <= craquelure_threshold <= 1.0:
-        raise ValueError("expert thresholds must be in [0, 1]")
-    crack_passes = crack_probability >= crack_threshold
-    craquelure_passes = craquelure_probability >= craquelure_threshold
-    labels = torch.zeros_like(crack_probability, dtype=torch.long)
-    labels[crack_passes & ~craquelure_passes] = 1
-    labels[craquelure_passes & ~crack_passes] = 2
-    overlap = crack_passes & craquelure_passes
-    crack_margin = crack_probability - crack_threshold
-    craquelure_margin = craquelure_probability - craquelure_threshold
-    labels[overlap & (crack_margin >= craquelure_margin)] = 1
-    labels[overlap & (craquelure_margin > crack_margin)] = 2
-    return labels

@@ -21,7 +21,7 @@ from sam2_adapter.data import H0DataPlan, H0TileDataset
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = PROJECT_ROOT.parent
-DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_v2_3class"
+DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_clean_v2_merged_craquelure"
 DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "segment-anything-2" / "checkpoints" / "sam2.1_hiera_large.pt"
 
 

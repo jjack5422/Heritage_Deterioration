@@ -34,14 +34,12 @@ def test_hierarchy_probabilities_are_normalized_and_mutually_exclusive() -> None
     )
 
 
-def test_stage_targets_preserve_ignore_and_hide_background_from_type_stage() -> None:
-    source = torch.tensor([[[0, 1, 2, 255]]])
+def test_stage_target_keeps_only_merged_crack_as_foreground() -> None:
+    source = torch.tensor([[[0, 1, 2, 3, 4, 5, 255]]])
 
-    union = make_stage_target(source, stage="union", ignore_value=255)
-    type_target = make_stage_target(source, stage="type", ignore_value=255)
+    foreground = make_stage_target(source, stage="foreground", ignore_value=255)
 
-    assert union.tolist() == [[[0, 1, 1, 255]]]
-    assert type_target.tolist() == [[[255, 1, 0, 255]]]
+    assert foreground.tolist() == [[[0, 1, 255, 255, 255, 255, 255]]]
 
 
 def test_binary_loss_ignores_unsupervised_pixels() -> None:

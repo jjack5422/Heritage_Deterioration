@@ -14,7 +14,11 @@ import torch.nn.functional as F
 from crackseg_common.augment import IMAGENET_MEAN, IMAGENET_STD
 from crackseg_common.evaluation import evaluate
 from PIL import Image
-from crackseg_common.thresholding import calibrate_model_threshold, save_run_threshold_policy
+from crackseg_common.thresholding import (
+    ThresholdPolicy,
+    calibrate_model_threshold,
+    save_run_threshold_policy,
+)
 from crackseg_common.reporting.threshold_curves import (
     render_pr_roc_curve,
     write_tensorboard_curve,
@@ -512,5 +516,44 @@ def prepare_final_evaluation(
         expert_name=plan.expert_name,
         ignore_value=plan.ignore_value,
         threshold=policy.threshold,
+    )
+    return int(best_data["epoch"]), policy, test_metrics, rows
+
+
+def prepare_fixed_binary_final_evaluation(
+    *,
+    best_path: Path,
+    model: nn.Module,
+    criterion: nn.Module,
+    validation_loader: DataLoader,
+    test_loader: DataLoader,
+    device: torch.device,
+    output_root: Path,
+    plan: Any,
+    threshold: float = 0.5,
+) -> tuple[int, ThresholdPolicy, dict[str, Any], list[dict[str, Any]]]:
+    """Evaluate the merged binary contract at its fixed, model-independent threshold."""
+
+    best_data = torch.load(best_path, map_location=device, weights_only=False)
+    model.load_state_dict(best_data["model"])
+    policy = ThresholdPolicy.default(plan.expert_name, plan.expert_id, threshold)
+    policy.save(output_root / "config" / "threshold_policy.json")
+    test_metrics = evaluate(
+        model,
+        test_loader,
+        criterion,
+        device,
+        plan.expert_name,
+        plan.ignore_value,
+        threshold,
+    )
+    rows = write_validation_artifacts(
+        model=model,
+        loader=validation_loader,
+        device=device,
+        output_root=output_root,
+        expert_name=plan.expert_name,
+        ignore_value=plan.ignore_value,
+        threshold=threshold,
     )
     return int(best_data["epoch"]), policy, test_metrics, rows

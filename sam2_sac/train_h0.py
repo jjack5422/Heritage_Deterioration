@@ -1,14 +1,11 @@
-"""Train H0: 512px, morphology-free, native SAM2 Hiera-L hierarchy.
+"""Train merged-crack SAM2-SAC at 512px with nested five-fold CV.
 
 Usage (from the repository root)::
 
-    crackseg_env/bin/python -m sam2_sac.train_h0 --stage all
+    crackseg_env/bin/python -m sam2_sac.train_h0
 
-The two independently validation-selected native SAM2 decoders are:
-``type`` (crack vs craquelure only inside GT deterioration) and ``union``
-(deterioration vs background).  At inference their probabilities are combined
-as P(bg)=1-u, P(crack)=u*t, P(craquelure)=u*(1-t), which is exhaustive and
-mutually exclusive without adding a semantic head to SAM2.
+Raw label 1 is the merged crack foreground. Raw label 0 is background and all
+other defect labels are excluded from loss and metrics.
 """
 
 from __future__ import annotations
@@ -40,13 +37,12 @@ from sam2_sac.h0_core import (
     NativeSAM2MaskDecoder,
     binary_bce_dice_loss,
     freeze_except_layer_norm,
-    hierarchy_labels,
     load_trainable_state_dict,
     make_stage_target,
     model_parameter_counts,
     trainable_state_dict,
 )
-from sam2_sac.metrics import binary_summary, hierarchy_summary
+from sam2_sac.metrics import binary_summary
 from sam2_sac.reporting import (
     EpochReporter,
     RunLayout,
@@ -59,21 +55,21 @@ from sam2_sac.reporting import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = PROJECT_ROOT.parent
-DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_v2_3class"
+DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_clean_v2_merged_craquelure"
 DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "segment-anything-2" / "checkpoints" / "sam2.1_hiera_large.pt"
-DEFAULT_EXPERIMENT = "2026-08-18_sam2-hiera-large_h0_512_seed42"
-Stage = Literal["union", "type"]
+DEFAULT_EXPERIMENT = "2026-08-21_sam2-sac-hiera-large_merged-crack_512_80ep_seed42"
+Stage = Literal["foreground"]
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--stage", choices=("all", "type", "union"), default="all")
+    parser.add_argument("--stage", choices=("foreground",), default="foreground")
     parser.add_argument("--folds", type=int, nargs="+", default=(0, 1, 2, 3, 4))
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--sam2-config", default="configs/sam2.1/sam2.1_hiera_l.yaml")
     parser.add_argument("--image-size", type=int, default=512)
-    parser.add_argument("--epochs", type=int, default=30)
+    parser.add_argument("--epochs", type=int, default=80)
     parser.add_argument("--patience", type=int, default=8)
     parser.add_argument(
         "--no-early-stop",
@@ -221,7 +217,7 @@ def _evaluate_stage(
                         input_rgb=rgb,
                         target=target_binary,
                         prediction=prediction_binary,
-                        target_class="damage_union" if stage == "union" else "crack_given_damage",
+                        target_class="foreground",
                     )
                 )
     summary = binary_summary(counts_by_group)
@@ -230,34 +226,6 @@ def _evaluate_stage(
         **summary,
         "per_image_rows": rows,
     }
-
-
-def _evaluate_hierarchy(
-    union_model: NativeSAM2MaskDecoder,
-    type_model: NativeSAM2MaskDecoder,
-    loader: DataLoader[dict[str, Tensor | str]],
-    *,
-    plan: H0DataPlan,
-    device: torch.device,
-    amp: bool,
-) -> dict[str, Any]:
-    """Evaluate final exclusive H0 labels, never used for checkpoint selection."""
-
-    union_model.eval()
-    type_model.eval()
-    target_batches: list[np.ndarray] = []
-    prediction_batches: list[np.ndarray] = []
-    with torch.no_grad():
-        for batch in loader:
-            images = _batch_tensor(batch, "image", device)
-            with _autocast(device, amp):
-                union_logits = union_model(images)
-                type_logits = type_model(images)
-            target_batches.append(_batch_tensor(batch, "mask", device).cpu().numpy())
-            prediction_batches.append(hierarchy_labels(union_logits, type_logits).cpu().numpy())
-    target = np.concatenate(target_batches, axis=0)
-    prediction = np.concatenate(prediction_batches, axis=0)
-    return hierarchy_summary(target, prediction, ignore_value=plan.ignore_value)
 
 
 def _train_epoch(
@@ -381,10 +349,6 @@ def _stage_run_dir(experiment_id: str, stage: Stage, fold: int) -> Path:
     return PROJECT_ROOT / "runs" / experiment_id / "5fold" / stage / f"fold{fold}"
 
 
-def _type_checkpoint_path(experiment_id: str, fold: int) -> Path:
-    return _stage_run_dir(experiment_id, "type", fold) / "artifacts" / "checkpoints" / "best.pt"
-
-
 def _write_run_metadata(
     layout: RunLayout,
     *,
@@ -393,7 +357,6 @@ def _write_run_metadata(
     stage: Stage,
     checkpoint_sha256: str,
     parameter_counts: dict[str, int],
-    type_checkpoint: Path | None,
 ) -> None:
     revision = _git_revision()
     write_json(layout.config / "args.json", vars(args))
@@ -418,7 +381,6 @@ def _write_run_metadata(
             "adaptation": "LayerNorm affine parameters only; every other parameter frozen",
             "parameter_counts": parameter_counts,
             "morphology": "none (H0)",
-            "type_checkpoint": str(type_checkpoint) if type_checkpoint else None,
         },
     )
     write_json(
@@ -485,10 +447,10 @@ def _update_experiment_metadata(
             "runs": sorted(run_paths),
             "dataset_root": str(plan.root),
             "manifest_hash": plan.manifest_hash,
-            "h0": {
+            "sac": {
                 "image_size": 512,
                 "morphology": "none",
-                "hierarchy": "P(bg)=1-u; P(crack)=u*t; P(craquelure)=u*(1-t)",
+                "task": "binary merged crack foreground",
             },
             "created_at": existing.get("created_at", datetime.now().astimezone().isoformat()),
             "updated_at": datetime.now().astimezone().isoformat(),
@@ -536,12 +498,11 @@ def _assert_stage_has_supervision(plan: H0DataPlan, stage: Stage) -> None:
         "outer_test": plan.test_counts,
     }
     for partition, counts in partitions.items():
-        background, crack, craquelure = counts
+        background, foreground, excluded = counts
         del background
-        if stage == "union" and crack + craquelure == 0:
+        del excluded
+        if foreground == 0:
             raise ValueError(f"{stage} has no positive pixels in {partition}")
-        if stage == "type" and (crack == 0 or craquelure == 0):
-            raise ValueError(f"{stage} requires both crack and craquelure pixels in {partition}")
 
 
 def _build_model(args: argparse.Namespace, device: torch.device) -> NativeSAM2MaskDecoder:
@@ -577,7 +538,6 @@ def _train_stage(
     stage: Stage,
     device: torch.device,
     checkpoint_sha256: str,
-    type_checkpoint: Path | None = None,
 ) -> Path:
     _assert_stage_has_supervision(plan, stage)
     output = _stage_run_dir(args.experiment_id, stage, plan.outer_fold)
@@ -602,7 +562,6 @@ def _train_stage(
         stage=stage,
         checkpoint_sha256=checkpoint_sha256,
         parameter_counts=counts,
-        type_checkpoint=type_checkpoint,
     )
     write_json(layout.config / "trainable_parameters.json", {"names": list(trainable_names), "count": counts["trainable"]})
     _update_experiment_metadata(args=args, plan=plan, stage=stage, layout=layout)
@@ -770,60 +729,6 @@ def _train_stage(
             "tile_micro": outer_test["tile_micro"],
             "expert_panel_macro": outer_test["expert_panel_macro"],
         }
-        if stage == "union":
-            if type_checkpoint is None or not type_checkpoint.is_file():
-                raise FileNotFoundError("union H0 evaluation requires the matching selected type checkpoint")
-            type_model = _build_model(args, device)
-            _freeze_active_native_layer_norm(type_model)
-            _load_adaptation_checkpoint(
-                type_model,
-                type_checkpoint,
-                expected_stage="type",
-                checkpoint_sha256=checkpoint_sha256,
-            )
-            # Batch one keeps the two Hiera-L instances far below VRAM limits during final fusion.
-            h0_validation = _evaluate_hierarchy(
-                model,
-                type_model,
-                _make_loader(plan, plan.val, train=False, args=args, batch_size=1),
-                plan=plan,
-                device=device,
-                amp=args.amp,
-            )
-            h0_outer = _evaluate_hierarchy(
-                model,
-                type_model,
-                _make_loader(plan, plan.test, train=False, args=args, batch_size=1),
-                plan=plan,
-                device=device,
-                amp=args.amp,
-            )
-            _load_adaptation_checkpoint(
-                model,
-                layout.checkpoints / "last.pt",
-                expected_stage="union",
-                checkpoint_sha256=checkpoint_sha256,
-            )
-            h0_last_outer = _evaluate_hierarchy(
-                model,
-                type_model,
-                _make_loader(plan, plan.test, train=False, args=args, batch_size=1),
-                plan=plan,
-                device=device,
-                amp=args.amp,
-            )
-            write_json(layout.metrics / "h0_hierarchical_last_outer_test.json", h0_last_outer)
-            _load_adaptation_checkpoint(
-                model,
-                layout.checkpoints / "best.pt",
-                expected_stage="union",
-                checkpoint_sha256=checkpoint_sha256,
-            )
-            write_json(layout.metrics / "h0_hierarchical_validation.json", h0_validation)
-            write_json(layout.metrics / "h0_hierarchical_outer_test.json", h0_outer)
-            outer_record["end_to_end_h0"] = h0_outer
-            del type_model
-            torch.cuda.empty_cache()
         finalize_reporting(
             layout,
             writer=writer,
@@ -868,24 +773,13 @@ def main(argv: list[str] | None = None) -> int:
     )
     for fold in args.folds:
         plan = prepare_data_plan(args.dataset, outer_fold=fold)
-        type_checkpoint = _type_checkpoint_path(args.experiment_id, fold)
-        if args.stage in ("all", "type"):
-            type_checkpoint = _train_stage(
-                args,
-                plan=plan,
-                stage="type",
-                device=device,
-                checkpoint_sha256=checkpoint_sha256,
-            )
-        if args.stage in ("all", "union"):
-            _train_stage(
-                args,
-                plan=plan,
-                stage="union",
-                device=device,
-                checkpoint_sha256=checkpoint_sha256,
-                type_checkpoint=type_checkpoint,
-            )
+        _train_stage(
+            args,
+            plan=plan,
+            stage="foreground",
+            device=device,
+            checkpoint_sha256=checkpoint_sha256,
+        )
     return 0
 
 
