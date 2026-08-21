@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Sequence
@@ -17,7 +18,16 @@ from torch.utils.data import Dataset
 
 IMAGE_SIZE = 512
 IGNORE_VALUE = 255
-CLASS_NAMES = ("background", "crack", "craquelure")
+RAW_CLASS_NAMES = (
+    "background",
+    "craquelure",
+    "loss",
+    "shrinkage",
+    "flaking",
+    "stain",
+)
+SCORED_PIXEL_NAMES = ("background", "foreground", "excluded")
+CLASS_IDS = {name: index for index, name in enumerate(RAW_CLASS_NAMES)}
 _MEAN = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1, 1)
 _STD = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
 
@@ -54,7 +64,12 @@ class H0DataPlan:
             "manifest_hash": self.manifest_hash,
             "image_manifest_hash": self.image_manifest_hash,
             "mask_manifest_hash": self.mask_manifest_hash,
-            "class_names": list(CLASS_NAMES),
+            "raw_class_names": list(RAW_CLASS_NAMES),
+            "target_class_names": ["background", "foreground"],
+            "target_rule": (
+                "raw label 1 is foreground; raw label 0 is background; "
+                "all other labels are excluded"
+            ),
             "ignore_value": self.ignore_value,
             "outer_fold": self.outer_fold,
             "inner_fold": self.inner_fold,
@@ -62,9 +77,9 @@ class H0DataPlan:
             "validation": list(self.val),
             "outer_test": list(self.test),
             "pixel_counts": {
-                "train": dict(zip(CLASS_NAMES, self.train_counts, strict=True)),
-                "validation": dict(zip(CLASS_NAMES, self.val_counts, strict=True)),
-                "outer_test": dict(zip(CLASS_NAMES, self.test_counts, strict=True)),
+                "train": dict(zip(SCORED_PIXEL_NAMES, self.train_counts, strict=True)),
+                "validation": dict(zip(SCORED_PIXEL_NAMES, self.val_counts, strict=True)),
+                "outer_test": dict(zip(SCORED_PIXEL_NAMES, self.test_counts, strict=True)),
             },
             "group_counts": {
                 "train": len(self.groups(self.train)),
@@ -96,8 +111,10 @@ def _load_contract(root: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]
         pair_count = int(manifest["pair_count"])
     except (KeyError, TypeError, ValueError) as error:
         raise DataContractError("manifest.json label contract is incomplete") from error
-    if ids != {"background": 0, "crack": 1, "craquelure": 2}:
-        raise DataContractError(f"H0 requires class IDs 0/1/2, got {ids!r}")
+    if ids != CLASS_IDS:
+        raise DataContractError(
+            f"merged-crack training requires class IDs {CLASS_IDS!r}, got {ids!r}"
+        )
     if ignore_value != IGNORE_VALUE:
         raise DataContractError(f"H0 expects ignore value {IGNORE_VALUE}, got {ignore_value}")
     raw_items = _read_json(root / "tile_index.json").get("items")
@@ -107,11 +124,17 @@ def _load_contract(root: Path) -> tuple[dict[str, Any], dict[str, dict[str, Any]
     for item in raw_items:
         if not isinstance(item, dict) or not isinstance(item.get("tile"), str):
             raise DataContractError("tile_index.json item lacks a tile name")
-        if not isinstance(item.get("source_group"), str) or not item["source_group"]:
-            raise DataContractError(f"tile_index item lacks source_group: {item.get('tile')!r}")
         if item["tile"] in index:
             raise DataContractError(f"duplicate tile in tile_index: {item['tile']}")
-        index[item["tile"]] = item
+        source_group = item.get("source_group")
+        if not isinstance(source_group, str) or not source_group:
+            match = re.match(r"(.+?)_R\d+_C\d+", Path(item["tile"]).stem)
+            if match is None:
+                raise DataContractError(
+                    f"cannot derive source_group from tile name: {item['tile']!r}"
+                )
+            source_group = match.group(1)
+        index[item["tile"]] = {**item, "source_group": source_group}
     if len(index) != pair_count:
         raise DataContractError(f"manifest pair_count={pair_count}, tile_index count={len(index)}")
     return manifest, index
@@ -140,7 +163,7 @@ def _load_fold(
     if set(train) & set(holdout) or set(train) | set(holdout) != eligible:
         raise DataContractError(f"fold{fold}.json does not partition tile_index exactly")
     expected = {
-        "class_names": list(CLASS_NAMES),
+        "class_names": list(RAW_CLASS_NAMES),
         "ignore_value": IGNORE_VALUE,
         "task_image_manifest_sha256": manifest.get("image_manifest_sha256"),
         "task_mask_manifest_sha256": manifest.get("mask_manifest_sha256"),
@@ -168,16 +191,17 @@ def _count_pixels(root: Path, names: Sequence[str], ignore_value: int) -> tuple[
             values = np.asarray(mask)
         if values.ndim != 2:
             raise DataContractError(f"mask must be a single-channel label-ID image: {name}")
-        unknown = set(np.unique(values).tolist()) - {0, 1, 2, ignore_value}
+        unknown = set(np.unique(values).tolist()) - {*CLASS_IDS.values(), ignore_value}
         if unknown:
             raise DataContractError(f"mask {name} has unknown labels: {sorted(unknown)}")
-        valid = values != ignore_value
-        totals += np.bincount(values[valid].astype(np.int64), minlength=3)[:3]
+        totals[0] += int((values == 0).sum())
+        totals[1] += int((values == 1).sum())
+        totals[2] += int(((values != 0) & (values != 1)).sum())
     return tuple(int(value) for value in totals)
 
 
 def prepare_data_plan(root: str | Path, *, outer_fold: int) -> H0DataPlan:
-    """Validate the v2 three-class data contract and make one nested CV split."""
+    """Validate the merged-label data contract and make one nested CV split."""
 
     root = Path(root).resolve()
     manifest, index = _load_contract(root)
@@ -224,7 +248,7 @@ def prepare_data_plan(root: str | Path, *, outer_fold: int) -> H0DataPlan:
 
 
 class H0TileDataset(Dataset[dict[str, Tensor | str]]):
-    """Load a 512px RGB tile and its original 0/1/2/255 label IDs."""
+    """Load a 512px RGB tile and its original merged-dataset label IDs."""
 
     def __init__(
         self,

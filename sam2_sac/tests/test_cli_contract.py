@@ -8,6 +8,8 @@ def test_h0_defaults_use_checkpoint_compatible_sam21_hiera_large_config() -> Non
 
     assert args.sam2_config == "configs/sam2.1/sam2.1_hiera_l.yaml"
     assert args.image_size == 512
+    assert args.stage == "foreground"
+    assert args.epochs == 80
 
 
 def test_h0_can_disable_early_stopping_for_best_vs_last_comparison() -> None:

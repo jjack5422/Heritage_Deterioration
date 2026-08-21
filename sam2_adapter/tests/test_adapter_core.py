@@ -1,4 +1,4 @@
-"""Behavioral contract for the SAM2-Adapter dual-expert experiment."""
+"""Behavioral contract for binary merged-crack SAM2-Adapter training."""
 
 from __future__ import annotations
 
@@ -7,9 +7,8 @@ from torch import nn
 
 from sam2_adapter.adapter_core import (
     StageAdapterBank,
-    dual_expert_labels,
     high_pass_filter,
-    make_expert_target,
+    make_binary_target,
 )
 from sam2_adapter.adapter_model import AdapterHieraTrunk, configure_adapter_training
 
@@ -51,14 +50,12 @@ class _FakeHiera(nn.Module):
         return torch.zeros((1, *spatial_shape, 8))
 
 
-def test_expert_targets_treat_the_other_foreground_class_as_negative() -> None:
-    source = torch.tensor([[[0, 1, 2, 255]]])
+def test_binary_target_scores_only_background_and_merged_crack() -> None:
+    source = torch.tensor([[[0, 1, 2, 5, 255]]])
 
-    crack = make_expert_target(source, expert="crack", ignore_value=255)
-    craquelure = make_expert_target(source, expert="craquelure", ignore_value=255)
+    target = make_binary_target(source, ignore_value=255)
 
-    assert crack.tolist() == [[[0, 1, 0, 255]]]
-    assert craquelure.tolist() == [[[0, 0, 1, 255]]]
+    assert target.tolist() == [[[0, 1, 255, 255, 255]]]
 
 
 def test_high_pass_filter_removes_a_constant_image_without_changing_shape() -> None:
@@ -92,21 +89,6 @@ def test_stage_adapter_bank_matches_each_hiera_stage_and_block_shape() -> None:
     assert handcrafted[1].shape == (2, 4, 4, 4)
     assert injected0.shape == stage0.shape
     assert injected1.shape == stage1.shape
-
-
-def test_dual_expert_fusion_can_reject_both_or_resolve_an_overlap_by_margin() -> None:
-    crack_probability = torch.tensor([[[0.40, 0.80, 0.70, 0.70]]])
-    craquelure_probability = torch.tensor([[[0.45, 0.40, 0.85, 0.75]]])
-
-    labels = dual_expert_labels(
-        crack_probability,
-        craquelure_probability,
-        crack_threshold=0.60,
-        craquelure_threshold=0.60,
-    )
-
-    # neither, crack only, craquelure wins the overlap, craquelure wins by margin
-    assert labels.tolist() == [[[0, 1, 2, 2]]]
 
 
 def test_adapter_hiera_trunk_preserves_native_multiscale_outputs() -> None:

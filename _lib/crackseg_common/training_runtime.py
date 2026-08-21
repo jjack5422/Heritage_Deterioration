@@ -23,6 +23,7 @@ from crackseg_common.data_plan import (
     DataError,
     DataPlan,
     JointDataset,
+    MergedForegroundDataset,
     class_weights,
     cost_weight_for_epoch,
     joint_class_weights,
@@ -41,6 +42,7 @@ from crackseg_common.reporting.outputs import (
 )
 from crackseg_common.reporting.qualitative import (
     prepare_final_evaluation,
+    prepare_fixed_binary_final_evaluation,
     prepare_joint_final_evaluation,
     write_tensorboard_validation_images,
 )
@@ -216,11 +218,12 @@ def make_loader(
     transforms = train_transforms(args.image_size) if training else val_transforms(args.image_size)
     source = TileSegDataset(plan.root, plan.items(names), transforms=transforms)
     joint = len(plan.class_names) == 3
-    dataset = (
-        JointDataset(source, *plan.source_class_ids, plan.ignore_value)
-        if joint
-        else ExpertDataset(source, plan.expert_id, plan.ignore_value)
-    )
+    if joint:
+        dataset = JointDataset(source, *plan.source_class_ids, plan.ignore_value)
+    elif plan.expert_name == "foreground":
+        dataset = MergedForegroundDataset(source, plan.expert_id, plan.ignore_value)
+    else:
+        dataset = ExpertDataset(source, plan.expert_id, plan.ignore_value)
     sampler = None
     if training and joint:
         sampler = WeightedRandomSampler(
@@ -487,12 +490,26 @@ class TrainingRun:
                     write_json(self.layout.metrics / "outer_test_metrics.json", test_metrics)
                     log_message(self.layout, f"outer_test_macro_IoU={test_metrics['tile_micro']['miou']:.4f}")
             else:
-                best_epoch, policy, test_metrics, rows = prepare_final_evaluation(
-                    best_path=best_path, model=self.model, criterion=self.criterion,
-                    validation_loader=self.val_loader, test_loader=self.test_loader,
-                    device=self.device, output_root=self.layout.root, plan=self.plan,
-                    writer=reporter.writer,
-                )
+                if self.plan.expert_name == "foreground":
+                    best_epoch, policy, test_metrics, rows = (
+                        prepare_fixed_binary_final_evaluation(
+                            best_path=best_path,
+                            model=self.model,
+                            criterion=self.criterion,
+                            validation_loader=self.val_loader,
+                            test_loader=self.test_loader,
+                            device=self.device,
+                            output_root=self.layout.root,
+                            plan=self.plan,
+                        )
+                    )
+                else:
+                    best_epoch, policy, test_metrics, rows = prepare_final_evaluation(
+                        best_path=best_path, model=self.model, criterion=self.criterion,
+                        validation_loader=self.val_loader, test_loader=self.test_loader,
+                        device=self.device, output_root=self.layout.root, plan=self.plan,
+                        writer=reporter.writer,
+                    )
                 write_json(self.layout.metrics / "outer_test_metrics.json", test_metrics)
                 score = test_metrics["expert_panel_macro"]["iou"]
                 score_text = "null" if score is None else f"{score:.4f}"

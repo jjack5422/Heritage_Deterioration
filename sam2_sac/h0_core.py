@@ -19,24 +19,16 @@ from torch import Tensor, nn
 
 
 HIERARCHY_CLASS_NAMES = ("background", "crack", "craquelure")
-Stage = Literal["union", "type"]
+Stage = Literal["foreground"]
 
 
 def make_stage_target(source_mask: Tensor, *, stage: Stage, ignore_value: int) -> Tensor:
-    """Map 0/background, 1/crack, 2/craquelure to one binary H0 task.
-
-    The union stage learns deterioration versus background.  The type stage is
-    supervised only inside ground-truth deterioration, so a type decision can
-    never manufacture a foreground pixel in the final hierarchy.
-    """
+    """Map the merged dataset to background/foreground and exclude other defects."""
 
     target = torch.full_like(source_mask, ignore_value)
-    if stage == "union":
+    if stage == "foreground":
         target[source_mask == 0] = 0
-        target[(source_mask == 1) | (source_mask == 2)] = 1
-    elif stage == "type":
         target[source_mask == 1] = 1
-        target[source_mask == 2] = 0
     else:
         raise ValueError(f"unknown H0 stage: {stage!r}")
     return target

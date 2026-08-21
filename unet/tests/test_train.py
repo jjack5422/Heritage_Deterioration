@@ -24,6 +24,7 @@ from crackseg_common.thresholding import ThresholdPolicy  # noqa: E402
 from crackseg_common.training_runtime import (  # noqa: E402
     ExpertDataset,
     JointDataset,
+    MergedForegroundDataset,
     SegLoss,
     TrainingRun,
     build_optimizer,
@@ -445,6 +446,26 @@ def test_joint_dataset_maps_crack_and_craquelure_and_ignores_other_damage() -> N
     item = JointDataset(SourceDataset(), crack_id=1, craquelure_id=2, ignore_value=255)[0]
 
     assert item["mask"].tolist() == [[0, 1, 2], [255, 2, 1]]
+
+
+def test_merged_foreground_dataset_excludes_every_non_crack_damage_label() -> None:
+    class MergedSourceDataset(torch.utils.data.Dataset):
+        def __len__(self) -> int:
+            return 1
+
+        def __getitem__(self, index: int) -> dict:
+            del index
+            return {
+                "image": torch.zeros(3, 2, 4),
+                "mask": torch.tensor([[0, 1, 2, 3], [4, 5, 255, 1]]),
+                "name": "panelA_R1_C01__y00000_x00000.png",
+            }
+
+    item = MergedForegroundDataset(
+        MergedSourceDataset(), foreground_id=1, ignore_value=255
+    )[0]
+
+    assert item["mask"].tolist() == [[0, 1, 255, 255], [255, 255, 255, 1]]
 
 
 def test_binary_loss_ignores_255_and_matches_weighted_cross_entropy() -> None:

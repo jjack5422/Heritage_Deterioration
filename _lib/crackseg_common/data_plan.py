@@ -37,6 +37,31 @@ class ExpertDataset(torch.utils.data.Dataset):
         return {**item, "mask": binary_mask}
 
 
+class MergedForegroundDataset(torch.utils.data.Dataset):
+    """Keep merged crack as foreground and exclude every unrelated label."""
+
+    def __init__(
+        self,
+        source: torch.utils.data.Dataset,
+        foreground_id: int,
+        ignore_value: int,
+    ) -> None:
+        self.source = source
+        self.foreground_id = foreground_id
+        self.ignore_value = ignore_value
+
+    def __len__(self) -> int:
+        return len(self.source)
+
+    def __getitem__(self, index: int) -> dict[str, Any]:
+        item = self.source[index]
+        source_mask = item["mask"]
+        target = torch.full_like(source_mask, self.ignore_value)
+        target[source_mask == 0] = 0
+        target[source_mask == self.foreground_id] = 1
+        return {**item, "mask": target.long()}
+
+
 class JointDataset(torch.utils.data.Dataset):
     """Remap source labels to background/crack/craquelure and ignore all others."""
 
@@ -258,6 +283,12 @@ def binary_counts(source_counts: np.ndarray, expert_id: int) -> np.ndarray:
     return np.array([int(source_counts.sum()) - foreground, foreground], dtype=np.int64)
 
 
+def merged_foreground_counts(source_counts: np.ndarray, foreground_id: int) -> np.ndarray:
+    """Count only background and merged crack; unrelated defects are excluded."""
+
+    return np.array([source_counts[0], source_counts[foreground_id]], dtype=np.int64)
+
+
 def joint_counts(source_counts: np.ndarray, crack_id: int, craquelure_id: int) -> np.ndarray:
     """Count only supervised joint-task pixels; other deterioration is ignored."""
 
@@ -322,15 +353,31 @@ def prepare_dataset(
     root = Path(root).resolve()
     source_names, ignore, pair_count, manifest_hash, manifest = load_contract(root)
     joint = expert == "crack_craquelure"
+    merged_foreground = expert == "foreground"
+    expected_merged_names = (
+        "background",
+        "craquelure",
+        "loss",
+        "shrinkage",
+        "flaking",
+        "stain",
+    )
+    if merged_foreground and source_names != expected_merged_names:
+        raise DataError(
+            "foreground task requires the merged dataset label contract "
+            f"{expected_merged_names!r}"
+        )
     if joint and not {"crack", "craquelure"}.issubset(source_names):
         raise DataError("joint task 需要 crack 與 craquelure label IDs")
-    if not joint and (expert == "background" or expert not in source_names):
+    if not joint and not merged_foreground and (
+        expert == "background" or expert not in source_names
+    ):
         available = ", ".join(source_names[1:])
         raise DataError(f"未知 expert {expert!r}；可用劣化類別: {available}")
     source_class_ids = (
         (source_names.index("crack"), source_names.index("craquelure"))
         if joint
-        else (source_names.index(expert),)
+        else ((source_names.index("craquelure"),) if merged_foreground else (source_names.index(expert),))
     )
     expert_id = -1 if joint else source_class_ids[0]
     index = load_index(root, pair_count)
@@ -387,6 +434,9 @@ def prepare_dataset(
         if joint:
             train_counts = joint_counts(sum_counts(tile_counts, train), *source_class_ids)
             val_counts = joint_counts(sum_counts(tile_counts, val), *source_class_ids)
+        elif merged_foreground:
+            train_counts = merged_foreground_counts(sum_counts(tile_counts, train), expert_id)
+            val_counts = merged_foreground_counts(sum_counts(tile_counts, val), expert_id)
         else:
             train_counts = binary_counts(sum_counts(tile_counts, train), expert_id)
             val_counts = binary_counts(sum_counts(tile_counts, val), expert_id)
@@ -425,7 +475,11 @@ def prepare_dataset(
         test_counts=(
             joint_counts(sum_counts(tile_counts, test), *source_class_ids)
             if joint
-            else binary_counts(sum_counts(tile_counts, test), expert_id)
+            else (
+                merged_foreground_counts(sum_counts(tile_counts, test), expert_id)
+                if merged_foreground
+                else binary_counts(sum_counts(tile_counts, test), expert_id)
+            )
         ),
         index=index,
         tile_counts=tile_counts,
