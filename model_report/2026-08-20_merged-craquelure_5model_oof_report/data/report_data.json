@@ -1,0 +1,564 @@
+{
+  "schema_version": 1,
+  "title": "Merged Crack / Craquelure — Five-model OOF Report",
+  "generated_date": "2026-08-20",
+  "dataset_root": "datasets/dataset_clean_v2_merged_craquelure",
+  "scope": "five-fold source-split out-of-fold retest; each image scored once",
+  "metric_definitions": {
+    "precision_recall_iou_micro_f1": "pooled foreground pixels across all OOF images",
+    "macro_f1": "equal mean of per-image foreground F1 over positive-GT images",
+    "weighted_f1": "per-image foreground F1 weighted by GT-foreground / valid-pixel fraction"
+  },
+  "models": [
+    {
+      "key": "resunet50",
+      "name": "ResNet50 U-Net",
+      "family": "U-Net",
+      "color": "#0f766e",
+      "run_dir": "unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42",
+      "threshold": 0.5,
+      "tile_count": 929,
+      "positive_images": 799,
+      "metrics": {
+        "precision": 0.6316759007841742,
+        "recall": 0.48096689179607655,
+        "iou": 0.3756241693406927,
+        "micro_f1": 0.5461145241737376,
+        "macro_f1": 0.3634727479952289,
+        "weighted_f1": 0.48587414685817143
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "metrics": {
+            "precision": 0.7903201501670216,
+            "recall": 0.7097017680536392,
+            "iou": 0.5972457727528844,
+            "micro_f1": 0.7478445495880319,
+            "macro_f1": 0.6132144374137448,
+            "weighted_f1": 0.7376929176860353
+          },
+          "outer_loss": 0.12200014634364274,
+          "tile_count": 115,
+          "positive_images": 96,
+          "epochs": 80,
+          "selected_epoch": 16,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/5fold/craquelure/fold0/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/resunet50/fold0.png"
+        },
+        {
+          "fold": 1,
+          "metrics": {
+            "precision": 0.4721378451502456,
+            "recall": 0.6159490253900062,
+            "iou": 0.36475896173952715,
+            "micro_f1": 0.5345397567854824,
+            "macro_f1": 0.27189246030081826,
+            "weighted_f1": 0.5232084747510771
+          },
+          "outer_loss": 0.1518136574596344,
+          "tile_count": 281,
+          "positive_images": 218,
+          "epochs": 80,
+          "selected_epoch": 7,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/5fold/craquelure/fold1/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/resunet50/fold1.png"
+        },
+        {
+          "fold": 2,
+          "metrics": {
+            "precision": 0.6412568122182601,
+            "recall": 0.02613244717165818,
+            "iou": 0.02575590932060716,
+            "micro_f1": 0.05021839813268279,
+            "macro_f1": 0.08688698686876112,
+            "weighted_f1": 0.04312525088163983
+          },
+          "outer_loss": 0.432498264737637,
+          "tile_count": 134,
+          "positive_images": 134,
+          "epochs": 80,
+          "selected_epoch": 25,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/5fold/craquelure/fold2/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/resunet50/fold2.png"
+        },
+        {
+          "fold": 3,
+          "metrics": {
+            "precision": 0.7317949648552088,
+            "recall": 0.5207378922340414,
+            "iou": 0.4372817923481394,
+            "micro_f1": 0.6084844248026495,
+            "macro_f1": 0.4896976457213317,
+            "weighted_f1": 0.5990415243620387
+          },
+          "outer_loss": 0.0953797917322546,
+          "tile_count": 178,
+          "positive_images": 175,
+          "epochs": 80,
+          "selected_epoch": 33,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/5fold/craquelure/fold3/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/resunet50/fold3.png"
+        },
+        {
+          "fold": 4,
+          "metrics": {
+            "precision": 0.5690696047152084,
+            "recall": 0.5448890473376367,
+            "iou": 0.3857295063522631,
+            "micro_f1": 0.5567168838998622,
+            "macro_f1": 0.4257593128934261,
+            "weighted_f1": 0.5387209912299307
+          },
+          "outer_loss": 0.06427606440663176,
+          "tile_count": 221,
+          "positive_images": 176,
+          "epochs": 80,
+          "selected_epoch": 26,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/5fold/craquelure/fold4/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/resunet50/fold4.png"
+        }
+      ]
+    },
+    {
+      "key": "convnext_large",
+      "name": "ConvNeXt-Large U-Net",
+      "family": "U-Net",
+      "color": "#2563eb",
+      "run_dir": "unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42",
+      "threshold": 0.5,
+      "tile_count": 929,
+      "positive_images": 799,
+      "metrics": {
+        "precision": 0.6016850512559496,
+        "recall": 0.5241976697341323,
+        "iou": 0.38915406053717433,
+        "micro_f1": 0.5602748774843471,
+        "macro_f1": 0.38807741502446963,
+        "weighted_f1": 0.4921067521559207
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "metrics": {
+            "precision": 0.5831724314338987,
+            "recall": 0.7917789103833651,
+            "iou": 0.5056282678381663,
+            "micro_f1": 0.6716508697916054,
+            "macro_f1": 0.5766124492504311,
+            "weighted_f1": 0.6799474750321362
+          },
+          "outer_loss": 0.17238554473989443,
+          "tile_count": 115,
+          "positive_images": 96,
+          "epochs": 80,
+          "selected_epoch": 13,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/5fold/craquelure/fold0/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/convnext_large/fold0.png"
+        },
+        {
+          "fold": 1,
+          "metrics": {
+            "precision": 0.5534650135322484,
+            "recall": 0.6995746294536047,
+            "iou": 0.4471793936212185,
+            "micro_f1": 0.6180013280900298,
+            "macro_f1": 0.343703890561217,
+            "weighted_f1": 0.5951073930280949
+          },
+          "outer_loss": 0.10516063436391786,
+          "tile_count": 281,
+          "positive_images": 218,
+          "epochs": 80,
+          "selected_epoch": 8,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/5fold/craquelure/fold1/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/convnext_large/fold1.png"
+        },
+        {
+          "fold": 2,
+          "metrics": {
+            "precision": 0.6527300328093629,
+            "recall": 0.03045586693682899,
+            "iou": 0.02997024874852278,
+            "micro_f1": 0.05819633874849973,
+            "macro_f1": 0.09231583150149492,
+            "weighted_f1": 0.049998801007610345
+          },
+          "outer_loss": 0.47218376161674785,
+          "tile_count": 134,
+          "positive_images": 134,
+          "epochs": 80,
+          "selected_epoch": 23,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/5fold/craquelure/fold2/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/convnext_large/fold2.png"
+        },
+        {
+          "fold": 3,
+          "metrics": {
+            "precision": 0.7954884443563539,
+            "recall": 0.5158866115314764,
+            "iou": 0.45547716670501853,
+            "micro_f1": 0.625880195339856,
+            "macro_f1": 0.5143239143075923,
+            "weighted_f1": 0.6148960920699914
+          },
+          "outer_loss": 0.09138299754020501,
+          "tile_count": 178,
+          "positive_images": 175,
+          "epochs": 80,
+          "selected_epoch": 27,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/5fold/craquelure/fold3/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/convnext_large/fold3.png"
+        },
+        {
+          "fold": 4,
+          "metrics": {
+            "precision": 0.5745475317284121,
+            "recall": 0.5758527035463933,
+            "iou": 0.4037051697423039,
+            "micro_f1": 0.5751993772544376,
+            "macro_f1": 0.4398557097109974,
+            "weighted_f1": 0.5564448469922673
+          },
+          "outer_loss": 0.0678516545816002,
+          "tile_count": 221,
+          "positive_images": 176,
+          "epochs": 80,
+          "selected_epoch": 22,
+          "loss_source": "/home/cihcilab/Documents/jacky/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/5fold/craquelure/fold4/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/convnext_large/fold4.png"
+        }
+      ]
+    },
+    {
+      "key": "segformer_b5",
+      "name": "SegFormer-B5",
+      "family": "Transformer",
+      "color": "#7c3aed",
+      "run_dir": "segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42",
+      "threshold": 0.5,
+      "tile_count": 929,
+      "positive_images": 799,
+      "metrics": {
+        "precision": 0.5257229137863779,
+        "recall": 0.372380361843019,
+        "iou": 0.27874028746736046,
+        "micro_f1": 0.4359607501213967,
+        "macro_f1": 0.311411060687573,
+        "weighted_f1": 0.38485151166224124
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "metrics": {
+            "precision": 0.6612648607280932,
+            "recall": 0.48999349221099003,
+            "iou": 0.3916811958749866,
+            "micro_f1": 0.5628892551483048,
+            "macro_f1": 0.4854467462170369,
+            "weighted_f1": 0.5571055156120504
+          },
+          "outer_loss": 0.17766293966313315,
+          "tile_count": 115,
+          "positive_images": 96,
+          "epochs": 80,
+          "selected_epoch": 5,
+          "loss_source": "/home/cihcilab/Documents/jacky/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/5fold/craquelure/fold0/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/segformer_b5/fold0.png"
+        },
+        {
+          "fold": 1,
+          "metrics": {
+            "precision": 0.3659574243446595,
+            "recall": 0.3804908351982277,
+            "iou": 0.22931874540267874,
+            "micro_f1": 0.3730826464011374,
+            "macro_f1": 0.2106333347484522,
+            "weighted_f1": 0.3511517819665053
+          },
+          "outer_loss": 0.12154054411828075,
+          "tile_count": 281,
+          "positive_images": 218,
+          "epochs": 80,
+          "selected_epoch": 1,
+          "loss_source": "/home/cihcilab/Documents/jacky/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/5fold/craquelure/fold1/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/segformer_b5/fold1.png"
+        },
+        {
+          "fold": 2,
+          "metrics": {
+            "precision": 0.5690167031517078,
+            "recall": 0.02601317726797891,
+            "iou": 0.025510547048305347,
+            "micro_f1": 0.0497518960126379,
+            "macro_f1": 0.08338216885887666,
+            "weighted_f1": 0.040599150910176005
+          },
+          "outer_loss": 0.5027935977863428,
+          "tile_count": 134,
+          "positive_images": 134,
+          "epochs": 80,
+          "selected_epoch": 11,
+          "loss_source": "/home/cihcilab/Documents/jacky/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/5fold/craquelure/fold2/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/segformer_b5/fold2.png"
+        },
+        {
+          "fold": 3,
+          "metrics": {
+            "precision": 0.6013190068069753,
+            "recall": 0.5445115370444742,
+            "iou": 0.40007694691359313,
+            "micro_f1": 0.5715070843721052,
+            "macro_f1": 0.45650160056862676,
+            "weighted_f1": 0.5577486984752337
+          },
+          "outer_loss": 0.09462622764795717,
+          "tile_count": 178,
+          "positive_images": 175,
+          "epochs": 80,
+          "selected_epoch": 18,
+          "loss_source": "/home/cihcilab/Documents/jacky/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/5fold/craquelure/fold3/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/segformer_b5/fold3.png"
+        },
+        {
+          "fold": 4,
+          "metrics": {
+            "precision": 0.4884805009498251,
+            "recall": 0.5044313451040069,
+            "iou": 0.3300771273218496,
+            "micro_f1": 0.4963278001576793,
+            "macro_f1": 0.37065620540212235,
+            "weighted_f1": 0.4632360278658105
+          },
+          "outer_loss": 0.07129705464645976,
+          "tile_count": 221,
+          "positive_images": 176,
+          "epochs": 80,
+          "selected_epoch": 14,
+          "loss_source": "/home/cihcilab/Documents/jacky/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/5fold/craquelure/fold4/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/segformer_b5/fold4.png"
+        }
+      ]
+    },
+    {
+      "key": "sam2_sac",
+      "name": "SAM2-SAC",
+      "family": "SAM2",
+      "color": "#dc2626",
+      "run_dir": "sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42",
+      "threshold": 0.5,
+      "tile_count": 929,
+      "positive_images": 799,
+      "metrics": {
+        "precision": 0.6914408448309018,
+        "recall": 0.4933516895356907,
+        "iou": 0.4043333330480617,
+        "micro_f1": 0.5758366956518348,
+        "macro_f1": 0.41628123273559386,
+        "weighted_f1": 0.5189155002767423
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "metrics": {
+            "precision": 0.7993018304281773,
+            "recall": 0.6170811471229628,
+            "iou": 0.5342952770597044,
+            "micro_f1": 0.6964699494918841,
+            "macro_f1": 0.6121755046245068,
+            "weighted_f1": 0.6897556331901352
+          },
+          "outer_loss": 0.12982849284278164,
+          "tile_count": 115,
+          "positive_images": 96,
+          "epochs": 80,
+          "selected_epoch": 50,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/5fold/craquelure/fold0/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_sac/fold0.png"
+        },
+        {
+          "fold": 1,
+          "metrics": {
+            "precision": 0.6377806620968237,
+            "recall": 0.6119742432520763,
+            "iou": 0.45413407941206313,
+            "micro_f1": 0.6246110119304529,
+            "macro_f1": 0.37703775691727587,
+            "weighted_f1": 0.6165147337427922
+          },
+          "outer_loss": 0.07928358360288568,
+          "tile_count": 281,
+          "positive_images": 218,
+          "epochs": 80,
+          "selected_epoch": 4,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/5fold/craquelure/fold1/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_sac/fold1.png"
+        },
+        {
+          "fold": 2,
+          "metrics": {
+            "precision": 0.5418742365366538,
+            "recall": 0.09851831135751085,
+            "iou": 0.09094345146320547,
+            "micro_f1": 0.16672440966803445,
+            "macro_f1": 0.20828276617601812,
+            "weighted_f1": 0.12472978349595137
+          },
+          "outer_loss": 0.3712051339201587,
+          "tile_count": 134,
+          "positive_images": 134,
+          "epochs": 80,
+          "selected_epoch": 26,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/5fold/craquelure/fold2/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_sac/fold2.png"
+        },
+        {
+          "fold": 3,
+          "metrics": {
+            "precision": 0.6942079458443636,
+            "recall": 0.6468095869362533,
+            "iou": 0.5033876403795116,
+            "micro_f1": 0.6696711172275404,
+            "macro_f1": 0.5302956634985976,
+            "weighted_f1": 0.6584915435274726
+          },
+          "outer_loss": 0.06726455250957357,
+          "tile_count": 178,
+          "positive_images": 175,
+          "epochs": 80,
+          "selected_epoch": 61,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/5fold/craquelure/fold3/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_sac/fold3.png"
+        },
+        {
+          "fold": 4,
+          "metrics": {
+            "precision": 0.6348879357779627,
+            "recall": 0.5379994538201417,
+            "iou": 0.41087688661594113,
+            "micro_f1": 0.5824418707452922,
+            "macro_f1": 0.4030340552498847,
+            "weighted_f1": 0.5144338770932906
+          },
+          "outer_loss": 0.05128316230578526,
+          "tile_count": 221,
+          "positive_images": 176,
+          "epochs": 80,
+          "selected_epoch": 26,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/5fold/craquelure/fold4/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_sac/fold4.png"
+        }
+      ]
+    },
+    {
+      "key": "sam2_adapter",
+      "name": "SAM2-Adapter",
+      "family": "SAM2",
+      "color": "#d97706",
+      "run_dir": "sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42",
+      "threshold": 0.5,
+      "tile_count": 929,
+      "positive_images": 799,
+      "metrics": {
+        "precision": 0.6851859873235451,
+        "recall": 0.5302337471066948,
+        "iou": 0.4263631535527534,
+        "micro_f1": 0.5978325400383172,
+        "macro_f1": 0.3973867978568844,
+        "weighted_f1": 0.5241466522211506
+      },
+      "folds": [
+        {
+          "fold": 0,
+          "metrics": {
+            "precision": 0.7319707700649399,
+            "recall": 0.7988119374125907,
+            "iou": 0.6180340299656384,
+            "micro_f1": 0.7639320539862359,
+            "macro_f1": 0.6938832792194933,
+            "weighted_f1": 0.7608454892477393
+          },
+          "outer_loss": 0.1179249323614643,
+          "tile_count": 115,
+          "positive_images": 96,
+          "epochs": 80,
+          "selected_epoch": 16,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/5fold/craquelure/fold0/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_adapter/fold0.png"
+        },
+        {
+          "fold": 1,
+          "metrics": {
+            "precision": 0.6238838470516895,
+            "recall": 0.6350270815089801,
+            "iou": 0.45922148701047055,
+            "micro_f1": 0.629406147179596,
+            "macro_f1": 0.3454118470759345,
+            "weighted_f1": 0.6250798685395917
+          },
+          "outer_loss": 0.07203558114810973,
+          "tile_count": 281,
+          "positive_images": 218,
+          "epochs": 80,
+          "selected_epoch": 24,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/5fold/craquelure/fold1/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_adapter/fold1.png"
+        },
+        {
+          "fold": 2,
+          "metrics": {
+            "precision": 0.600594190140845,
+            "recall": 0.049884979943463324,
+            "iou": 0.0482832133963758,
+            "micro_f1": 0.09211864270904621,
+            "macro_f1": 0.1257512217999066,
+            "weighted_f1": 0.06476278221755838
+          },
+          "outer_loss": 0.49408902982234776,
+          "tile_count": 134,
+          "positive_images": 134,
+          "epochs": 80,
+          "selected_epoch": 33,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/5fold/craquelure/fold2/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_adapter/fold2.png"
+        },
+        {
+          "fold": 3,
+          "metrics": {
+            "precision": 0.695934811838844,
+            "recall": 0.6361657941469505,
+            "iou": 0.49780134463986503,
+            "micro_f1": 0.6647094374982786,
+            "macro_f1": 0.5186108826565724,
+            "weighted_f1": 0.6495223699171662
+          },
+          "outer_loss": 0.07674810315270318,
+          "tile_count": 178,
+          "positive_images": 175,
+          "epochs": 80,
+          "selected_epoch": 54,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/5fold/craquelure/fold3/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_adapter/fold3.png"
+        },
+        {
+          "fold": 4,
+          "metrics": {
+            "precision": 0.6773419343374593,
+            "recall": 0.5087735627874139,
+            "iou": 0.4095221872433423,
+            "micro_f1": 0.5810794479855061,
+            "macro_f1": 0.3863176467837381,
+            "weighted_f1": 0.5127890325778484
+          },
+          "outer_loss": 0.05399641370550861,
+          "tile_count": 221,
+          "positive_images": 176,
+          "epochs": 80,
+          "selected_epoch": 30,
+          "loss_source": "/home/cihcilab/Documents/jacky/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/5fold/craquelure/fold4/tensorboard/images/loss_curve.png",
+          "loss_asset": "assets/loss/sam2_adapter/fold4.png"
+        }
+      ]
+    }
+  ]
+}

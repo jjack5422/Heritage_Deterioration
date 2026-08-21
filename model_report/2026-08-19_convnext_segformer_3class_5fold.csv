@@ -1,0 +1,7 @@
+model,family,params_m,effective_batch,pooled_f1,pooled_iou,pooled_precision,pooled_recall,fold_mean_f1,fold_std_f1,crack_f1,crack_iou,craquelure_f1,craquelure_iou,best_epochs,experiment_id
+ConvNeXt-Tiny U-Net,ConvNeXt U-Net,31.93,16,0.448732,0.300472,0.451019,0.451597,0.397793,0.184476,0.304748,0.179766,0.592717,0.421178,22|10|23|31|27,2026-08-18_dataset-v2_3class_convnext-tiny_seed42
+ConvNeXt-Base U-Net,ConvNeXt U-Net,92.65,16,0.450603,0.300962,0.465248,0.446778,0.402524,0.188809,0.313835,0.186123,0.587372,0.415801,15|6|20|31|27,2026-08-18_dataset-v2_3class_convnext-base_seed42
+ConvNeXt-Large U-Net,ConvNeXt U-Net,203.27,16,0.468775,0.316957,0.466570,0.473927,0.407886,0.180909,0.330023,0.197621,0.607527,0.436293,13|8|23|27|22,2026-08-17_dataset-v2_3class_convnext-large_seed42
+SegFormer-B2,SegFormer,27.35,16,0.352859,0.219289,0.424889,0.301770,0.329355,0.159309,0.246716,0.140717,0.459002,0.297861,6|1|13|25|51,2026-08-18_dataset-v2_3class_segformer-b2_seed42
+SegFormer-B3,SegFormer,47.22,16,0.411412,0.265773,0.441388,0.385720,0.363687,0.189374,0.295034,0.173044,0.527790,0.358502,13|1|9|31|19,2026-08-18_dataset-v2_3class_segformer-b3_seed42
+SegFormer-B5,SegFormer,84.60,16,0.360644,0.225267,0.400699,0.330129,0.324517,0.154960,0.253068,0.144864,0.468220,0.305671,5|1|11|18|14,2026-08-18_dataset-v2_3class_segformer-b5_seed42

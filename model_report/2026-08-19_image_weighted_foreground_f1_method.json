@@ -1,0 +1,31 @@
+{
+  "schema_version": 1,
+  "evaluated_on": "2026-08-19",
+  "task": "background/crack/craquelure semantic segmentation",
+  "dataset": "dataset_v2_3class",
+  "dataset_manifest_sha256": "216e91f87a9dc7d9cdf7e6df9024585887925983a11d416d7085e1c7c5f1e75f",
+  "scope": "all 929 outer-test images across five mutually exclusive folds",
+  "checkpoint": {
+    "filename": "best.pt",
+    "selection_split": "inner validation",
+    "selection_metric": "val_panel_macro_loss",
+    "outer_test_used_for_selection": false
+  },
+  "primary_metric": {
+    "name": "image_weighted_foreground_f1",
+    "per_image_score": "arithmetic mean of crack F1 and craquelure F1 for classes present in that image's GT",
+    "image_weight": "(GT crack pixels + GT craquelure pixels) / valid pixels",
+    "aggregation": "sum(image_weight * per_image_score) / sum(image_weight)",
+    "zero_foreground_image_weight": 0,
+    "crack_vs_craquelure_support_weighting": false
+  },
+  "diagnostic_metric": {
+    "name": "image_weighted_binary_foreground_f1",
+    "description": "collapse crack and craquelure into one foreground class before computing per-image F1, then use the same GT foreground-fraction image weights"
+  },
+  "artifacts": {
+    "summary_csv": "2026-08-19_image_weighted_foreground_f1_summary.csv",
+    "per_image_csv": "2026-08-19_image_weighted_foreground_f1_per_image.csv",
+    "analysis_report": "2026-08-19_weighted_f1_convergence_loss_analysis.md"
+  }
+}
