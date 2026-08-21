@@ -24,6 +24,7 @@ from crackseg_common.data_plan import (
     DataPlan,
     JointDataset,
     MergedForegroundDataset,
+    binary_weighting_record,
     class_weights,
     cost_weight_for_epoch,
     joint_class_weights,
@@ -359,6 +360,16 @@ class TrainingRun:
         if not args.no_class_weights:
             calculate = joint_class_weights if len(plan.class_names) == 3 else class_weights
             weights = calculate(plan.train_counts).to(device)
+        if len(plan.class_names) == 2:
+            run_config_path = layout.config / "run.json"
+            run_config = json.loads(run_config_path.read_text(encoding="utf-8"))
+            run_config["class_weighting"] = (
+                binary_weighting_record(plan.train_counts)
+                if weights is not None
+                else {"scheme": "disabled", "source_partition": "training_only"}
+            )
+            write_json(run_config_path, run_config)
+            log_message(layout, f"class_weighting={run_config['class_weighting']}")
         criterion = SegLoss(
             len(plan.class_names),
             plan.ignore_value,

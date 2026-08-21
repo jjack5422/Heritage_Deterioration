@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import torch
 from torch import nn
 
@@ -16,13 +18,37 @@ def test_binary_loss_ignores_unsupervised_pixels() -> None:
     logits = torch.tensor([[[[0.0, 50.0]]]])
     target = torch.tensor([[[[0, 255]]]])
 
-    baseline = binary_bce_dice_loss(logits, target, ignore_value=255)
+    baseline = binary_bce_dice_loss(logits, target, ignore_value=255, positive_weight=1.0)
     perturbed = binary_bce_dice_loss(
-        torch.tensor([[[[0.0, -50.0]]]]), target, ignore_value=255
+        torch.tensor([[[[0.0, -50.0]]]]),
+        target,
+        ignore_value=255,
+        positive_weight=1.0,
     )
 
     assert torch.isfinite(baseline)
     assert torch.allclose(baseline, perturbed)
+
+
+def test_binary_loss_requires_an_explicit_fold_positive_weight() -> None:
+    parameter = inspect.signature(binary_bce_dice_loss).parameters["positive_weight"]
+
+    assert parameter.default is inspect.Parameter.empty
+
+
+def test_binary_loss_applies_the_training_fold_positive_weight_to_bce_only() -> None:
+    logits = torch.zeros((1, 1, 1, 2))
+    target = torch.tensor([[[[0, 1]]]])
+
+    loss = binary_bce_dice_loss(
+        logits,
+        target,
+        ignore_value=255,
+        dice_weight=0.0,
+        positive_weight=4.0,
+    )
+
+    assert torch.allclose(loss, torch.log(torch.tensor(2.0)) * 2.5)
 
 
 def test_only_layer_norm_parameters_are_trainable() -> None:

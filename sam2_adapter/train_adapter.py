@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 
 import torch
+from crackseg_common.data_plan import binary_weighting_record
 from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -132,6 +133,7 @@ def _evaluate(
     device: torch.device,
     amp: bool,
     dice_weight: float,
+    positive_weight: float,
     layout: RunLayout | None = None,
 ) -> dict[str, Any]:
     model.eval()
@@ -146,7 +148,11 @@ def _evaluate(
             with _autocast(device, amp):
                 logits = model(images)
                 loss = binary_bce_dice_loss(
-                    logits, target, ignore_value=plan.ignore_value, dice_weight=dice_weight
+                    logits,
+                    target,
+                    ignore_value=plan.ignore_value,
+                    dice_weight=dice_weight,
+                    positive_weight=positive_weight,
                 )
             losses.append(float(loss.detach().cpu()))
             groups = [str(value) for value in batch["source_group"]]  # type: ignore[index]
@@ -193,6 +199,7 @@ def _train_epoch(
     device: torch.device,
     amp: bool,
     dice_weight: float,
+    positive_weight: float,
     accumulation_steps: int,
     gradient_clip: float,
 ) -> float:
@@ -205,7 +212,11 @@ def _train_epoch(
         target = make_binary_target(source, ignore_value=plan.ignore_value)
         with _autocast(device, amp):
             loss = binary_bce_dice_loss(
-                model(images), target, ignore_value=plan.ignore_value, dice_weight=dice_weight
+                model(images),
+                target,
+                ignore_value=plan.ignore_value,
+                dice_weight=dice_weight,
+                positive_weight=positive_weight,
             )
         (loss / accumulation_steps).backward()
         if batch_index % accumulation_steps == 0 or batch_index == len(loader):
@@ -270,6 +281,7 @@ def _write_metadata(
     plan: H0DataPlan,
     model: SAM2AdapterMaskDecoder,
     checkpoint_sha256: str,
+    class_weighting: dict[str, object],
 ) -> None:
     counts = model_parameter_counts(model)
     write_json(layout.config / "args.json", vars(args))
@@ -308,8 +320,9 @@ def _write_metadata(
             "task": TASK_NAME,
             "outer_fold": plan.outer_fold,
             "inner_fold": plan.inner_fold,
-            "selection_metric": "validation BCEWithLogits + 0.65 soft Dice",
+            "selection_metric": "validation fixed 2:1 foreground-weighted BCEWithLogits + 0.65 unweighted soft Dice",
             "selection_scope": "validation only; outer test excluded",
+            "class_weighting": class_weighting,
             "threshold": FIXED_THRESHOLD,
             "threshold_source": "pre-registered merged dataset evaluation contract",
             "max_epochs": args.epochs,
@@ -371,7 +384,16 @@ def _train_fold(
         raise FileExistsError(f"refusing to overwrite existing run: {output}")
     layout = RunLayout.create(output)
     model = _build_model(args, device)
-    _write_metadata(layout, args=args, plan=plan, model=model, checkpoint_sha256=checkpoint_sha256)
+    class_weighting = binary_weighting_record(plan.train_counts[:2])
+    positive_weight = float(class_weighting["bce_positive_weight"])
+    _write_metadata(
+        layout,
+        args=args,
+        plan=plan,
+        model=model,
+        checkpoint_sha256=checkpoint_sha256,
+        class_weighting=class_weighting,
+    )
     _update_experiment_info(args, plan, layout)
     optimizer = AdamW(
         (parameter for parameter in model.parameters() if parameter.requires_grad),
@@ -399,6 +421,7 @@ def _train_fold(
                 device=device,
                 amp=args.amp,
                 dice_weight=args.dice_weight,
+                positive_weight=positive_weight,
                 accumulation_steps=args.accumulation_steps,
                 gradient_clip=args.gradient_clip,
             )
@@ -409,6 +432,7 @@ def _train_fold(
                 device=device,
                 amp=args.amp,
                 dice_weight=args.dice_weight,
+                positive_weight=positive_weight,
             )
             micro = validation["tile_micro"]
             learning_rate = float(optimizer.param_groups[0]["lr"])
@@ -456,6 +480,7 @@ def _train_fold(
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
             layout=layout,
         )
         outer = _evaluate(
@@ -465,6 +490,7 @@ def _train_fold(
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
         )
         peak_mib = torch.cuda.max_memory_allocated(device) / 1024**2
         outer_record = {
@@ -472,7 +498,7 @@ def _train_fold(
             "task": TASK_NAME,
             "selected_checkpoint": "artifacts/checkpoints/best.pt",
             "selected_epoch": int(selected["epoch"]),
-            "selection_metric": "validation BCEWithLogits + 0.65 soft Dice",
+            "selection_metric": "validation fixed 2:1 foreground-weighted BCEWithLogits + 0.65 unweighted soft Dice",
             "threshold": FIXED_THRESHOLD,
             "threshold_source": "pre-registered merged dataset evaluation contract",
             "loss": outer["loss"],
@@ -511,10 +537,16 @@ def _smoke_test(args: argparse.Namespace, plan: H0DataPlan, device: torch.device
     images = _batch_tensor(batch, "image", device)
     source = _batch_tensor(batch, "mask", device).long()
     target = make_binary_target(source, ignore_value=plan.ignore_value)
+    class_weighting = binary_weighting_record(plan.train_counts[:2])
+    positive_weight = float(class_weighting["bce_positive_weight"])
     torch.cuda.reset_peak_memory_stats(device)
     with _autocast(device, args.amp):
         loss = binary_bce_dice_loss(
-            model(images), target, ignore_value=plan.ignore_value, dice_weight=args.dice_weight
+            model(images),
+            target,
+            ignore_value=plan.ignore_value,
+            dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
         )
     loss.backward()
     missing = [name for name, parameter in model.named_parameters() if parameter.requires_grad and parameter.grad is None]
@@ -528,6 +560,7 @@ def _smoke_test(args: argparse.Namespace, plan: H0DataPlan, device: torch.device
                 "loss": float(loss.detach().cpu()),
                 "parameter_counts": model_parameter_counts(model),
                 "adapter": model.adapter_metadata,
+                "class_weighting": class_weighting,
                 "peak_allocated_mib": torch.cuda.max_memory_allocated(device) / 1024**2,
             },
             indent=2,

@@ -22,9 +22,10 @@ def binary_bce_dice_loss(
     *,
     ignore_value: int,
     dice_weight: float = 0.65,
+    positive_weight: float,
     epsilon: float = 1e-6,
 ) -> Tensor:
-    """SAC's BCE + 0.65 Dice objective, excluding ignore/unlabelled pixels."""
+    """Adapter's weighted BCE + Dice objective, excluding ignore/unlabelled pixels."""
 
     if logits.ndim != 4 or logits.shape[1] != 1:
         raise ValueError("logits must have shape Bx1xHxW")
@@ -40,7 +41,16 @@ def binary_bce_dice_loss(
         return logits.sum() * 0.0
     valid_logits = logits[valid]
     valid_target = target[valid].to(dtype=logits.dtype)
-    bce = F.binary_cross_entropy_with_logits(valid_logits, valid_target)
+    pos_weight = torch.as_tensor(
+        positive_weight,
+        dtype=valid_logits.dtype,
+        device=valid_logits.device,
+    )
+    bce = F.binary_cross_entropy_with_logits(
+        valid_logits,
+        valid_target,
+        pos_weight=pos_weight,
+    )
     probability = torch.sigmoid(valid_logits)
     dice = 1.0 - (2.0 * (probability * valid_target).sum() + epsilon) / (
         probability.square().sum() + valid_target.square().sum() + epsilon

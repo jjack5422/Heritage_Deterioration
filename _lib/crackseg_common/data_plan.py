@@ -308,11 +308,40 @@ def joint_class_weights(counts: np.ndarray) -> torch.Tensor:
 
 
 def class_weights(counts: np.ndarray) -> torch.Tensor:
-    frequencies = counts / max(int(counts.sum()), 1)
-    present = frequencies > 0
-    weights = np.zeros_like(frequencies, dtype=np.float64)
-    weights[present] = np.median(frequencies[present]) / frequencies[present]
-    return torch.tensor(weights, dtype=torch.float32)
+    """Return the pre-registered fixed 1:2 background/foreground weights."""
+
+    values = np.asarray(counts, dtype=np.int64)
+    if values.shape != (2,) or np.any(values <= 0):
+        raise ValueError("binary class counts must contain positive background and foreground counts")
+    return torch.tensor([0.5, 1.0], dtype=torch.float32)
+
+
+def binary_positive_weight(counts: np.ndarray) -> float:
+    """Return BCE ``pos_weight`` equivalent to the binary CE class-weight ratio."""
+
+    values = np.asarray(counts, dtype=np.int64)
+    if values.shape != (2,) or np.any(values <= 0):
+        raise ValueError("binary class counts must contain positive background and foreground counts")
+    weights = class_weights(values)
+    return float(weights[1] / weights[0])
+
+
+def binary_weighting_record(counts: np.ndarray) -> dict[str, object]:
+    """Describe the fold-local class weighting used by every binary trainer."""
+
+    values = np.asarray(counts, dtype=np.int64)
+    weights = class_weights(values)
+    return {
+        "scheme": "fixed_binary_background_1_foreground_2",
+        "source_partition": "training_only",
+        "pixel_counts": {
+            "background": int(values[0]),
+            "foreground": int(values[1]),
+        },
+        "cross_entropy_class_weights": [float(value) for value in weights],
+        "bce_positive_weight": binary_positive_weight(values),
+        "dice_weighted": False,
+    }
 
 
 def cost_weight_for_epoch(epoch: int, maximum: float) -> float:

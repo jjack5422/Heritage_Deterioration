@@ -26,6 +26,7 @@ from typing import Any, Literal
 
 import numpy as np
 import torch
+from crackseg_common.data_plan import binary_weighting_record
 from torch import Tensor
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
@@ -172,6 +173,7 @@ def _evaluate_stage(
     device: torch.device,
     amp: bool,
     dice_weight: float,
+    positive_weight: float,
     layout: RunLayout | None = None,
 ) -> dict[str, Any]:
     """Evaluate a selected stage, optionally saving all validation source PNGs."""
@@ -188,7 +190,11 @@ def _evaluate_stage(
             with _autocast(device, amp):
                 logits = model(images)
                 loss = binary_bce_dice_loss(
-                    logits, target, ignore_value=plan.ignore_value, dice_weight=dice_weight
+                    logits,
+                    target,
+                    ignore_value=plan.ignore_value,
+                    dice_weight=dice_weight,
+                    positive_weight=positive_weight,
                 )
             losses.append(float(loss.detach().cpu()))
             groups = [str(value) for value in batch["source_group"]]  # type: ignore[index]
@@ -238,6 +244,7 @@ def _train_epoch(
     device: torch.device,
     amp: bool,
     dice_weight: float,
+    positive_weight: float,
 ) -> float:
     model.train()
     losses: list[float] = []
@@ -249,7 +256,11 @@ def _train_epoch(
         with _autocast(device, amp):
             logits = model(images)
             loss = binary_bce_dice_loss(
-                logits, target, ignore_value=plan.ignore_value, dice_weight=dice_weight
+                logits,
+                target,
+                ignore_value=plan.ignore_value,
+                dice_weight=dice_weight,
+                positive_weight=positive_weight,
             )
         loss.backward()
         optimizer.step()
@@ -357,6 +368,7 @@ def _write_run_metadata(
     stage: Stage,
     checkpoint_sha256: str,
     parameter_counts: dict[str, int],
+    class_weighting: dict[str, object],
 ) -> None:
     revision = _git_revision()
     write_json(layout.config / "args.json", vars(args))
@@ -407,7 +419,8 @@ def _write_run_metadata(
             "selection_scope": "validation only; outer test excluded",
             "early_stopping": not args.no_early_stop,
             "max_epochs": args.epochs,
-            "loss": "BCEWithLogits + 0.65 * soft Dice",
+            "loss": "fixed 2:1 foreground-weighted BCEWithLogits + 0.65 * unweighted soft Dice",
+            "class_weighting": class_weighting,
             "inference_rule": "sigmoid(logit) >= 0.5",
             "threshold": 0.5,
             "command": [sys.executable, *sys.argv],
@@ -555,6 +568,8 @@ def _train_stage(
         weight_decay=args.weight_decay,
     )
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs)
+    class_weighting = binary_weighting_record(np.asarray(plan.train_counts[:2]))
+    positive_weight = float(class_weighting["bce_positive_weight"])
     _write_run_metadata(
         layout,
         args=args,
@@ -562,6 +577,7 @@ def _train_stage(
         stage=stage,
         checkpoint_sha256=checkpoint_sha256,
         parameter_counts=counts,
+        class_weighting=class_weighting,
     )
     write_json(layout.config / "trainable_parameters.json", {"names": list(trainable_names), "count": counts["trainable"]})
     _update_experiment_metadata(args=args, plan=plan, stage=stage, layout=layout)
@@ -585,6 +601,7 @@ def _train_stage(
                 device=device,
                 amp=args.amp,
                 dice_weight=args.dice_weight,
+                positive_weight=positive_weight,
             )
             validation = _evaluate_stage(
                 model,
@@ -594,6 +611,7 @@ def _train_stage(
                 device=device,
                 amp=args.amp,
                 dice_weight=args.dice_weight,
+                positive_weight=positive_weight,
             )
             micro = validation["tile_micro"]
             learning_rate = float(optimizer.param_groups[0]["lr"])
@@ -662,6 +680,7 @@ def _train_stage(
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
         )
         outer_last = _evaluate_stage(
             model,
@@ -671,6 +690,7 @@ def _train_stage(
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
         )
         write_json(
             layout.metrics / "last_validation_metrics.json",
@@ -702,6 +722,7 @@ def _train_stage(
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
             layout=layout,
         )
         outer_test = _evaluate_stage(
@@ -712,6 +733,7 @@ def _train_stage(
             device=device,
             amp=args.amp,
             dice_weight=args.dice_weight,
+            positive_weight=positive_weight,
         )
         write_json(
             layout.metrics / "selected_validation_metrics.json",
@@ -722,7 +744,7 @@ def _train_stage(
             "stage": stage,
             "selected_checkpoint": "artifacts/checkpoints/best.pt",
             "selected_epoch": int(selected["epoch"]),
-            "selection_metric": "validation BCEWithLogits + 0.65 Dice loss",
+            "selection_metric": "validation fixed 2:1 foreground-weighted BCEWithLogits + 0.65 unweighted Dice loss",
             "threshold": 0.5,
             "inference_rule": "sigmoid(logit) >= 0.5",
             "loss": outer_test["loss"],
