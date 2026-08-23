@@ -7,7 +7,11 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from scripts.merge_crack_craquelure_dataset import merge_dataset, remap_mask
+from scripts.merge_crack_craquelure_dataset import (
+    align_splits_to_reference,
+    merge_dataset,
+    remap_mask,
+)
 
 
 def _sha256(path: Path) -> str:
@@ -109,3 +113,104 @@ def test_merge_dataset_refuses_to_overwrite_an_existing_destination(tmp_path: Pa
         assert str(destination) in str(error)
     else:
         raise AssertionError("merge_dataset must not overwrite an existing destination")
+
+
+def test_align_splits_to_reference_keeps_merged_contract_and_uses_reference_membership(
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "source"
+    destination = tmp_path / "merged"
+    reference = tmp_path / "reference"
+    for root in (source, reference):
+        (root / "images").mkdir(parents=True)
+        (root / "splits").mkdir()
+    (source / "masks").mkdir()
+    names = ["panelA_R1_C01.png", "panelB_R1_C01.png"]
+    for index, name in enumerate(names):
+        image = np.full((2, 2, 3), index, dtype=np.uint8)
+        Image.fromarray(image, mode="RGB").save(source / "images" / name)
+        Image.fromarray(image, mode="RGB").save(reference / "images" / name)
+        Image.fromarray(np.full((2, 2), index, dtype=np.uint8), mode="L").save(
+            source / "masks" / name
+        )
+    source_index = {"items": [{"tile": name} for name in names]}
+    (source / "tile_index.json").write_text(json.dumps(source_index), encoding="utf-8")
+    source_manifest = {
+        "pair_count": 2,
+        "training_eligible": True,
+        "label_contract": {
+            "class_ids": {
+                "background": 0,
+                "crack": 1,
+                "loss": 2,
+                "shrinkage": 3,
+                "craquelure": 4,
+                "flaking": 5,
+                "stain": 6,
+            },
+            "ignore_value": 255,
+        },
+    }
+    (source / "manifest.json").write_text(json.dumps(source_manifest), encoding="utf-8")
+    for fold, holdout in enumerate(names):
+        other = names[1 - fold]
+        source_split = {
+            "outer_fold": fold,
+            "holdout_tiles": [holdout],
+            "folds": [{"train": [other]}],
+            "data_contract": {},
+        }
+        (source / "splits" / f"fold{fold}.json").write_text(
+            json.dumps(source_split), encoding="utf-8"
+        )
+
+    merge_dataset(source, destination)
+    merged_manifest = json.loads(
+        (destination / "manifest.json").read_text(encoding="utf-8")
+    )
+    reference_manifest = {
+        "manifest_sha256": "reference-manifest",
+        "image_manifest_sha256": merged_manifest["image_manifest_sha256"],
+    }
+    (reference / "manifest.json").write_text(
+        json.dumps(reference_manifest), encoding="utf-8"
+    )
+    (reference / "tile_index.json").write_text(
+        json.dumps(source_index), encoding="utf-8"
+    )
+    for fold, holdout in enumerate(reversed(names)):
+        other = names[fold]
+        reference_split = {
+            "outer_fold": fold,
+            "holdout_tiles": [holdout],
+            "folds": [{"train": [other]}],
+            "data_contract": {"class_names": ["background", "crack", "craquelure"]},
+        }
+        (reference / "splits" / f"fold{fold}.json").write_text(
+            json.dumps(reference_split), encoding="utf-8"
+        )
+
+    summary = align_splits_to_reference(destination, reference)
+
+    aligned = json.loads(
+        (destination / "splits" / "fold0.json").read_text(encoding="utf-8")
+    )
+    assert aligned["holdout_tiles"] == ["panelB_R1_C01.png"]
+    assert aligned["folds"] == [{"train": ["panelA_R1_C01.png"]}]
+    assert aligned["data_contract"]["class_names"] == [
+        "background",
+        "craquelure",
+        "loss",
+        "shrinkage",
+        "flaking",
+        "stain",
+    ]
+    assert aligned["source_evidence"]["split_reference_manifest_sha256"] == (
+        "reference-manifest"
+    )
+    assert summary["fold_count"] == 2
+    assert summary["tile_count"] == 2
+    recorded = json.loads(
+        (destination / "split_alignment.json").read_text(encoding="utf-8")
+    )
+    assert recorded == summary

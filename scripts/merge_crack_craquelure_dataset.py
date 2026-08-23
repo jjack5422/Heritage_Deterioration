@@ -70,6 +70,55 @@ def _write_json(path: Path, payload: Any) -> None:
     )
 
 
+def _tile_names(root: Path) -> tuple[str, ...]:
+    index = json.loads((root / "tile_index.json").read_text(encoding="utf-8"))
+    items = index.get("items")
+    if not isinstance(items, list):
+        raise ValueError(f"tile_index.json has no items array: {root}")
+    names = tuple(item.get("tile") for item in items if isinstance(item, dict))
+    if len(names) != len(items) or not all(isinstance(name, str) and name for name in names):
+        raise ValueError(f"tile_index.json has invalid tile names: {root}")
+    if len(names) != len(set(names)):
+        raise ValueError(f"tile_index.json has duplicate tile names: {root}")
+    return names
+
+
+def _reference_splits(
+    reference: Path,
+    *,
+    eligible: set[str],
+    expected_image_hash: str,
+) -> tuple[list[tuple[Path, dict[str, Any]]], str]:
+    manifest = json.loads((reference / "manifest.json").read_text(encoding="utf-8"))
+    if manifest.get("image_manifest_sha256") != expected_image_hash:
+        raise ValueError("split reference images do not match the merged dataset images")
+    if set(_tile_names(reference)) != eligible:
+        raise ValueError("split reference tile names do not match the merged dataset")
+    splits: list[tuple[Path, dict[str, Any]]] = []
+    assigned: set[str] = set()
+    for path in sorted((reference / "splits").glob("fold*.json")):
+        data = json.loads(path.read_text(encoding="utf-8"))
+        try:
+            fold = int(path.stem.removeprefix("fold"))
+            train = tuple(data["folds"][0]["train"])
+            holdout = tuple(data["holdout_tiles"])
+        except (KeyError, IndexError, TypeError, ValueError) as error:
+            raise ValueError(f"invalid reference split: {path}") from error
+        if data.get("outer_fold") != fold:
+            raise ValueError(f"reference split outer_fold mismatch: {path}")
+        if len(train) != len(set(train)) or len(holdout) != len(set(holdout)):
+            raise ValueError(f"reference split contains duplicate tiles: {path}")
+        if set(train) & set(holdout) or set(train) | set(holdout) != eligible:
+            raise ValueError(f"reference split does not partition every tile exactly: {path}")
+        if assigned & set(holdout):
+            raise ValueError("reference holdout folds overlap")
+        assigned.update(holdout)
+        splits.append((path, data))
+    if not splits or assigned != eligible:
+        raise ValueError("reference holdout folds do not cover every tile exactly once")
+    return splits, str(manifest.get("manifest_sha256", ""))
+
+
 def remap_mask(mask: np.ndarray) -> np.ndarray:
     """Merge Crack/Craquelure and return a contiguous uint8 label mask."""
 
@@ -94,6 +143,8 @@ def _update_split(
     image_hash: str,
     mask_hash: str,
     source_manifest_hash: str,
+    split_reference_root: Path | None = None,
+    split_reference_manifest_hash: str | None = None,
 ) -> dict[str, Any]:
     split = copy.deepcopy(source_split)
     split.update(
@@ -143,10 +194,83 @@ def _update_split(
             "label_mapping": {str(key): value for key, value in SOURCE_TO_MERGED.items()},
         }
     )
+    if split_reference_root is not None:
+        evidence.update(
+            {
+                "split_reference_dataset": str(split_reference_root),
+                "split_reference_manifest_sha256": split_reference_manifest_hash,
+            }
+        )
     split["source_evidence"] = evidence
     split.pop("manifest_sha256", None)
     split["manifest_sha256"] = _json_hash(split)
     return split
+
+
+def align_splits_to_reference(
+    merged_root: str | Path,
+    split_reference_root: str | Path,
+) -> dict[str, Any]:
+    """Atomically align an existing merged dataset to a recorded split authority."""
+
+    merged = Path(merged_root).resolve()
+    reference = Path(split_reference_root).resolve()
+    manifest_path = merged / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("label_contract", {}).get("class_ids") != MERGED_CLASS_IDS:
+        raise ValueError("target is not the expected merged crack/craquelure dataset")
+    eligible = set(_tile_names(merged))
+    if int(manifest.get("pair_count", -1)) != len(eligible):
+        raise ValueError("merged manifest pair_count differs from tile_index.json")
+    reference_splits, reference_manifest_hash = _reference_splits(
+        reference,
+        eligible=eligible,
+        expected_image_hash=str(manifest.get("image_manifest_sha256", "")),
+    )
+    source_manifest_hash = str(
+        (manifest.get("source_dataset") or {}).get("manifest_sha256", "")
+    )
+    output_parent = merged / ".split-alignment"
+    if output_parent.exists():
+        raise FileExistsError(f"temporary alignment path already exists: {output_parent}")
+    output_parent.mkdir()
+    try:
+        for path, reference_split in reference_splits:
+            aligned = _update_split(
+                reference_split,
+                pair_count=len(eligible),
+                names_hash=str(manifest.get("names_sha256", "")),
+                tile_index_hash=_sha256_file(merged / "tile_index.json"),
+                image_hash=str(manifest.get("image_manifest_sha256", "")),
+                mask_hash=str(manifest.get("mask_manifest_sha256", "")),
+                source_manifest_hash=source_manifest_hash,
+                split_reference_root=reference,
+                split_reference_manifest_hash=reference_manifest_hash,
+            )
+            _write_json(output_parent / path.name, aligned)
+        split_root = merged / "splits"
+        backup = merged / ".splits-before-alignment"
+        if backup.exists():
+            raise FileExistsError(f"split backup path already exists: {backup}")
+        split_root.rename(backup)
+        try:
+            output_parent.rename(split_root)
+        except BaseException:
+            backup.rename(split_root)
+            raise
+        shutil.rmtree(backup)
+    except BaseException:
+        shutil.rmtree(output_parent, ignore_errors=True)
+        raise
+    summary = {
+        "dataset_root": str(merged),
+        "split_reference_root": str(reference),
+        "split_reference_manifest_sha256": reference_manifest_hash,
+        "fold_count": len(reference_splits),
+        "tile_count": len(eligible),
+    }
+    _write_json(merged / "split_alignment.json", summary)
+    return summary
 
 
 def merge_dataset(source_root: str | Path, destination_root: str | Path) -> dict[str, Any]:
