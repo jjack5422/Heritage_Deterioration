@@ -7,7 +7,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from scripts.merge_crack_craquelure_dataset import merge_dataset, remap_mask
+from scripts.data.merge_crack_labels import merge_dataset, remap_mask
 
 
 def _sha256(path: Path) -> str:

@@ -11,7 +11,7 @@ from scipy import ndimage
 
 Image.MAX_IMAGE_PIXELS = None
 
-ROOT = Path(__file__).resolve().parents[1]
+ROOT = Path(__file__).resolve().parents[2]
 IMAGES = [
     ROOT / "_data/image/01_門神部分(必要標註).jpg",
     ROOT / "_data/image/KJTHT-SC-L-1RB1-1.jpg",

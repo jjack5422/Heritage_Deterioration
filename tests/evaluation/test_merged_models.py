@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np
 
-from scripts.retest_merged_models import (
+from scripts.evaluation.evaluate_merged_models import (
     MODEL_SPECS,
     model_source_dataset,
     merged_binary_target,

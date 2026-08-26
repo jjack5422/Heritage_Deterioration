@@ -13,7 +13,11 @@ __pycache__/
 # Data and generated outputs
 _data/
 data/
+!scripts/data/
+!scripts/data/**
 datasets/
+!tests/datasets/
+!tests/datasets/**
 **/runs/
 model_comparisons/
 **/results/
@@ -58,4 +62,3 @@ segment-anything-2/
 
 # Tool caches
 .ruff_cache/
-

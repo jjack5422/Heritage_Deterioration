@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 
-WORKSPACE = Path(__file__).resolve().parents[1]
+WORKSPACE = Path(__file__).resolve().parents[2]
 ACTIVE_ENVIRONMENT_REFERENCES = (
     WORKSPACE / "AGENTS.md",
     WORKSPACE / "unet" / "README.md",

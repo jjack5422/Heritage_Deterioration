@@ -1,5 +1,26 @@
 # Jacky repository instructions
 
+## Python file organization
+
+- Name new Python files with lowercase `snake_case`.
+- Do not use vague names such as `new`, `final`, `copy`, `temp`, `misc`, or
+  `utils`, and do not add version-number or date suffixes unless the version or
+  date is part of a stable data contract.
+- Organize repository-level scripts by responsibility:
+  - `scripts/data/`
+  - `scripts/evaluation/`
+  - `scripts/reporting/`
+  - `scripts/legacy/` only for retained historical one-off scripts
+- Organize repository-level tests in the matching responsibility folder:
+  - `tests/architecture/`
+  - `tests/datasets/`
+  - `tests/evaluation/`
+  - `tests/reporting/`
+- Name test modules `test_<behavior>.py`.
+- Prefer an existing responsibility folder before creating a new folder.
+- When moving or renaming Python files, update imports and documented commands,
+  search for stale paths, and run the affected tests.
+
 ## Mandatory training output reporting
 
 This rule applies recursively to every training project under this repository.

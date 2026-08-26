@@ -8,7 +8,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from scripts.prepare_unet_compat_dataset_v2 import prepare_unet_compatibility
+from scripts.data.prepare_unet_view import prepare_unet_compatibility
 
 
 def _sha256(path: Path) -> str:
@@ -86,4 +86,3 @@ def test_prepare_unet_compatibility_writes_verified_nested_views(tmp_path: Path)
     assert split0["folds"][0]["train"] == list(names[2:])
     assert split0["data_contract"]["class_names"] == ["background", "crack", "craquelure"]
     assert split0["data_contract"]["task_mask_manifest_sha256"] == manifest["mask_manifest_sha256"]
-

@@ -621,7 +621,7 @@ def build_report(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--repo-root", type=Path, default=Path(__file__).resolve().parents[1]
+        "--repo-root", type=Path, default=Path(__file__).resolve().parents[2]
     )
     parser.add_argument(
         "--output-dir",

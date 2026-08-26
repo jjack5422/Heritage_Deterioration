@@ -46,7 +46,7 @@ from sam2_sac.reporting import (
 )
 
 
-WORKSPACE_ROOT = Path(__file__).resolve().parents[1]
+WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_clean_v2_merged_craquelure"
 DEFAULT_SOURCE_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_v2_3class"
 DEFAULT_SAM2_CHECKPOINT = (

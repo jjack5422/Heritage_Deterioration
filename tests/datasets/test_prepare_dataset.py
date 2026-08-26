@@ -3,7 +3,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from scripts.prepare_dataset_v2 import prepare_dataset
+from scripts.data.prepare_three_class import prepare_dataset
 
 
 def _rle(mask):

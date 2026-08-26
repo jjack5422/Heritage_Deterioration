@@ -1,17 +1,11 @@
 from __future__ import annotations
 
-import sys
 import unittest
 import xml.etree.ElementTree as ET
-from pathlib import Path
 
 import numpy as np
 
-
-SCRIPTS = Path(__file__).resolve().parents[1] / "scripts"
-sys.path.insert(0, str(SCRIPTS))
-
-from rebuild_monument_annotations import (  # noqa: E402
+from scripts.data.rebuild_monument import (
     CLASS_IDS,
     decode_cvat_rle,
     render_cvat_image,
