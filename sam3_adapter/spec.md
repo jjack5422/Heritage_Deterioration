@@ -15,13 +15,13 @@
 |---|---|---|---|---|---|
 | A | frozen SAM2.1 Hiera-L | 無 | 共用規格的 lightweight probe | SAM2 backbone 表徵基線 | 待實作與訓練 |
 | B | frozen SAM3 | 無 | 與 A 同規格的 lightweight probe | SAM3 backbone 表徵基線 | 待實作與訓練 |
-| C | SAM2.1 Hiera-L | 現有 SAM2-Adapter | SAM2 native mask decoder | 完整 SAM2-Adapter 基準 | 已完成，待一致性稽核 |
+| C | SAM2.1 Hiera-L | 現有 SAM2-Adapter | SAM2 native mask decoder | 既有 512-resolution SAM2-Adapter 系統基準 | 已完成，待一致性稽核 |
 | D | frozen SAM3 | 論文／官方 SAM3-Adapter | 論文指定的 SAM-family pretrained mask decoder | 完整 SAM3-Adapter 系統 | 待實作與訓練 |
 
 主要合法比較如下：
 
 - A 對 B：固定 probe protocol 下的 backbone 表徵與泛化穩定性。
-- C 對 D：兩代完整 Adapter 系統的表現。
+- C 對 D：現有兩代完整 Adapter 系統的表現。兩者 model-input resolution 不同，結果不得解讀為同解析度的純模型比較。
 - A 對 C、B 對 D：各代系統加入 Adapter 與指定 decoder 後的系統級增益；不得將增益完全歸因於 backbone。
 
 不得用 B 對 C或 A 對 D 推論 backbone 優劣。
@@ -66,7 +66,7 @@ D 的 Adapter 注入位置、stage 共享方式、mask decoder 初始化及實�
 | 項目 | 鎖定值 |
 |---|---|
 | image/mask pairs | 929 |
-| input | 512 x 512 RGB |
+| source tile | 512 x 512 RGB |
 | task | merged crack/craquelure binary segmentation |
 | foreground | raw label 1 |
 | background | raw label 0 |
@@ -86,6 +86,29 @@ mask_manifest_sha256 = a457d40d9b819c1787e425c73f0524fa9ad4b903bf2efd28912c28b55
 
 除了 hashes，還必須逐 fold 比對 train、validation、outer-test tile ID與 `source_group` 集合。路徑字串不同不構成 dataset 不一致，只要內容 hashes 與成員合約完全一致。
 
+### 4.1 解析度決策與風險
+
+原始 dataset tiles 與 GT masks 永遠維持 512 x 512，不建立放大後的資料副本，也不修改原始檔案。模型輸入採各 pretrained backbone 的官方原生解析度：
+
+| 組別 | Source image | Model input | Loss／metrics 空間 |
+|---|---:|---:|---:|
+| A：SAM2 probe | 512 x 512 | 1024 x 1024 | 原始 512 x 512 |
+| B：SAM3 probe | 512 x 512 | 1008 x 1008 | 原始 512 x 512 |
+| C：既有 SAM2-Adapter | 512 x 512 | 512 x 512 | 原始 512 x 512 |
+| D：SAM3-Adapter | 512 x 512 | 1008 x 1008 | 原始 512 x 512 |
+
+採用此設計的理由如下：
+
+- SAM2 官方原生 image size 為 1024；SAM3 官方 vision backbone 為 image size 1008、patch size 14。強迫 SAM3 使用 512 會產生不能整除 patch size 的非原生 token grid，可能不公平地低估 SAM3。
+- A、B 使用相同原始 512 tile、相同影像插值演算法及相同 probe 規格，但各自保持 pretrained backbone 的原生 model-input resolution。A 對 B 定義為 `native-preprocessing backbone comparison`，不是 identical-resolution comparison。
+- 1024 與 1008 的線性尺寸相差約 1.6%；此差異仍須記錄為限制，不得聲稱 A、B 的所有輸入張量條件完全相同。
+- C 是已完成的 512-resolution historical system baseline。C 對 D 可作現有完整系統比較，但 resolution、Adapter 與 decoder 均是共同差異，結果不得單獨歸因於 backbone。
+- 若未來要求 C 對 D 的 native-resolution 嚴格對照，必須新增 SAM2-Adapter 1024-resolution run；不得覆寫或重新命名既有 C。
+
+影像 preprocessing 固定在 augmentation 之後執行。A、B、D 的 RGB 一律使用 bilinear interpolation、`align_corners=False`、antialias 開啟，resize 至各自的 model input；GT mask 不做連續值插值。模型輸出的單通道 logits 使用 bilinear interpolation、`align_corners=False` 回到 512 x 512，再直接對原始 512 x 512 GT 計算 loss 與 metrics。Threshold 只在回到 512 後套用。若可執行的官方 SAM3-Adapter 明確要求不同於 1008 的輸入尺寸或不能採用此插值合約，D 必須停止並重新取得規格核准，不得在執行時自行改值。
+
+正式訓練前必須完成至少 20 張代表性薄裂縫影像的 preprocessing QA，涵蓋不同 `source_group`、低對比、細裂縫與密集裂縫。QA 必須檢視原始影像、model-input resize 與 logits 回映射 overlay，確認裂縫位置、邊界覆蓋與四周像素沒有固定偏移或裁切。若 QA 失敗，停止訓練並回報，不得自行改用 512、padding 或其他解析度。
+
 ## 5. 鎖定訓練設定
 
 | 設定 | 鎖定值 |
@@ -93,7 +116,11 @@ mask_manifest_sha256 = a457d40d9b819c1787e425c73f0524fa9ad4b903bf2efd28912c28b55
 | epochs | 80 |
 | early stopping | 關閉 |
 | seed | 42 |
-| image size | 512 x 512 |
+| source image／GT size | 512 x 512 |
+| A model input | 1024 x 1024 |
+| B model input | 1008 x 1008 |
+| C model input | 512 x 512（既有 run） |
+| D model input | 1008 x 1008；官方實作若不相容則停止並修訂規格 |
 | effective batch size | 4 |
 | optimizer | AdamW |
 | learning rate | `2e-4` |
@@ -220,7 +247,7 @@ Validation checkpoint 必須保存每張 validation image 的 input、GT、predi
 3. 實作並測試共用 data、loss、metrics、reporting contracts。
 4. 確認 SAM2／SAM3 可對齊的 feature stages，再實作 A／B probe。
 5. 實作 D，並驗證其架構與 trainable scope 符合官方方法。
-6. A、B、D 各執行完整單 batch preflight，記錄 peak VRAM並鎖定 micro-batch。
+6. 執行解析度 preprocessing QA；A、B、D 再各執行完整單 batch preflight，記錄 peak VRAM並鎖定 micro-batch。
 7. 各組執行短 smoke test；任何失敗先修正，不直接啟動五 folds。
 8. smoke test 通過後執行 A、B、D 的完整五 folds。
 9. 依 validation loss 選定 checkpoint後執行 clean outer-test。
@@ -235,10 +262,10 @@ Validation checkpoint 必須保存每張 validation image 的 input、GT、predi
 - 所有組別資料 hashes、fold tile IDs與 `source_group` 合約一致；
 - train、validation、outer-test 間無 `source_group` 洩漏；
 - 模型 feature stage 與 trainable parameter scope 通過測試並留存清單；
+- 解析度 preprocessing QA 通過，logits 回映射至 512 時無固定偏移、裁切或破壞性插值；
 - effective batch、loss、optimizer、scheduler、epochs、seed、augmentation與 threshold 符合本規格；
 - checkpoint 只由 validation loss 選擇，outer-test 完全排除於選模；
 - 每 fold 的 CSV、JSON、checkpoints、TensorBoard PNG與三個 HTML 報告齊全；
 - 本地檢視 `loss_curve.png` 與代表性 Best／Worst composites；
 - HTML 圖片連結驗證可用；
 - 最終結論遵守本規格的比較與 robustness 用語邊界。
-
