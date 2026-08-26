@@ -1,5 +1,9 @@
 # SegFormer crack segmentation
 
+> Checkpoint retention and the 2026-08-26 cleanup record are documented in
+> [`docs/checkpoint-retention.md`](docs/checkpoint-retention.md). Older runs may
+> retain reports and metrics without retaining model checkpoint files.
+
 This project owns the SegFormer-B2/B3/B5 training entry point and all
 SegFormer experiment artifacts. Dataset preparation, evaluation, checkpoint
 selection, TensorBoard export, and static reports use the shared

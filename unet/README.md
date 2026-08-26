@@ -1,5 +1,9 @@
 # U-Net crack segmentation
 
+> Checkpoint retention and the 2026-08-26 cleanup record are documented in
+> [`docs/checkpoint-retention.md`](docs/checkpoint-retention.md). Older runs may
+> retain reports and metrics without retaining model checkpoint files.
+
 以 `segmentation_models_pytorch.Unet` 訓練古蹟劣化的二元專家模型。每個 checkpoint 只負責一種劣化，不再用單一 softmax 模型互斥預測全部類別。
 
 ## 專案結構
