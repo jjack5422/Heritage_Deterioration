@@ -8,5 +8,6 @@ version = "0.1.0"
 description = "Shared data/augmentation/metrics/loss utilities for the crack-seg research projects"
 requires-python = ">=3.8"
 
-[tool.setuptools]
-packages = ["crackseg_common"]
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["crackseg_common*"]
