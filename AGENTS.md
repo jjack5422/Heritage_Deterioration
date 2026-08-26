@@ -28,11 +28,11 @@ in this file.
 ## Virtual environment boundary
 
 - Repository-local skills must only be used for work inside
-  `/home/cihcilab/Documents/jacky`.
+  `/home/jacky/project`.
 - Every Python-based inspection, test, data check, training, validation,
   evaluation, inference, exporter, or report command must use
-  `/home/cihcilab/Documents/jacky/crackseg_env/bin/python` or a tool installed
-  under `/home/cihcilab/Documents/jacky/crackseg_env/bin/`.
+  `/home/jacky/project/crackseg_env/bin/python` or a tool installed
+  under `/home/jacky/project/crackseg_env/bin/`.
 - Do not fall back to system `python`, `python3`, `pip`, another virtual
   environment, or globally installed Python packages.
 - Do not create, replace, upgrade, or install packages into `crackseg_env`
@@ -106,7 +106,7 @@ This rule applies recursively to every training project under this repository.
 For every model-training run, validation/evaluation that creates model artifacts,
 or modification to a training loop, invoke and follow the
 `$training-output-reporting` skill at
-`/home/cihcilab/.codex/skills/training-output-reporting/SKILL.md`.
+`/home/jacky/.codex/skills/training-output-reporting/SKILL.md`.
 
 - Put cross-validation output under
   `<project_root>/runs/<experiment_id>/<k>fold/<expert>/fold<index>/`, owned by
