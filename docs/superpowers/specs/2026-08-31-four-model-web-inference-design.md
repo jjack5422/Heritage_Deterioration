@@ -1,89 +1,81 @@
-# Four-model segmentation web inference design
+# 四模型影像分割 Web 推論設計
 
-## Goal
+## 目標
 
-Extend the existing Flask and Gradio segmentation web application from dummy
-inference to real GPU inference for these four validation-selected model
-families:
+擴充既有 Flask 與 Gradio 影像分割網站，從 dummy 推論進展為下列四種、
+由 validation 選定之模型系列的真實 GPU 推論：
 
 - SAM2 Adapter
 - SAM3 Adapter
 - ResUNet50
 - ConvNeXt-Large U-Net
 
-A user selects a model and compatible checkpoint, uploads an arbitrary-size
-RGB image, chooses a foreground threshold, and receives a binary mask and an
-overlay at the original image resolution. Dummy inference remains available as
-a fast service check.
+使用者可以選擇模型及相容的 checkpoint、上傳任意尺寸 RGB 圖片、調整前景
+threshold，並取得與原圖相同尺寸的二值 mask 與 overlay。Dummy 推論繼續保留，
+作為快速服務檢查功能。
 
-This work reuses completed training outputs. It does not train, evaluate, or
-create model artifacts, so the training-output-reporting workflow does not
-apply.
+本項工作只重用已完成的訓練輸出，不會進行訓練、評估或建立模型 artifact，
+因此不適用 training-output-reporting 流程。
 
-## Selected model outputs
+## 選定的模型輸出
 
-The initial defaults use the `fold0/artifacts/checkpoints/` directory from each
-completed binary foreground experiment and expose its `best.pt` and `last.pt`.
-The default selected checkpoint is `best.pt`; `last.pt` remains available for
-diagnosis but is not presented as the recommended model.
+初始預設值使用各個已完成二元前景實驗的
+`fold0/artifacts/checkpoints/` 目錄，並提供其中的 `best.pt` 與
+`last.pt`。預設選擇 `best.pt`；`last.pt` 僅供診斷，不會顯示為建議模型。
 
-| Web model | Experiment | Construction checkpoint | Task checkpoint schema |
+| Web 模型 | 實驗 | 建構用 checkpoint | 任務 checkpoint schema |
 | --- | --- | --- | --- |
-| SAM2 Adapter | `sam2_adapter/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_sam2-adapter-hiera-large_seed42` | `segment-anything-2/checkpoints/sam2.1_hiera_large.pt` | `adaptation_state` plus base-checkpoint hash and SAM2 metadata |
-| SAM3 Adapter | `sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42` | `segment-anything-3/checkpoints/sam3.pt` | `adaptation_state` plus base-checkpoint hash; model input is 512 |
-| ResUNet50 | `unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_resunet50_seed42` | none | full `model` state plus self-describing training arguments |
-| ConvNeXt-Large U-Net | `unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_convnext-large_seed42` | none | full `model` state plus self-describing training arguments |
+| SAM2 Adapter | `sam2_adapter/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_sam2-adapter-hiera-large_seed42` | `segment-anything-2/checkpoints/sam2.1_hiera_large.pt` | `adaptation_state`、base-checkpoint hash 與 SAM2 metadata |
+| SAM3 Adapter | `sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42` | `segment-anything-3/checkpoints/sam3.pt` | `adaptation_state` 與 base-checkpoint hash；模型輸入為 512 |
+| ResUNet50 | `unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_resunet50_seed42` | 無 | 完整 `model` state 與可描述模型的訓練參數 |
+| ConvNeXt-Large U-Net | `unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_convnext-large_seed42` | 無 | 完整 `model` state 與可描述模型的訓練參數 |
 
-Repository-relative defaults make the current checkout usable without copying
-large files. Environment variables can replace every base-checkpoint and
-task-checkpoint directory. Resolved checkpoint paths must remain inside the
-configured model-specific directory; traversal and escaping symlinks remain
-invalid.
+Repository-relative 預設路徑讓目前 checkout 不需複製大型檔案即可使用。每個
+base checkpoint 與任務 checkpoint 目錄都可以透過環境變數覆寫。解析後的
+checkpoint 路徑必須留在該模型設定的目錄內；仍須拒絕 path traversal 與逃離
+目錄的 symlink。
 
-## Architecture
+## 架構
 
-The existing UI-to-API boundary stays unchanged:
+保留目前 UI 與 API 的界線：
 
 ```text
 Gradio UI
     -> localhost Flask API
-        -> InferenceManager and one-request lock
-            -> one active real-model adapter
-                -> shared 512-pixel tiled inference
-                    -> original-size mask and overlay
+        -> InferenceManager 與單一 request lock
+            -> 一個作用中的真實模型 adapter
+                -> 共用的 512-pixel tiled inference
+                    -> 原始尺寸 mask 與 overlay
 ```
 
-The Flask process lazily constructs only the requested model. The inference
-manager caches one `(model, checkpoint)` pair. Switching either value unloads
-the previous model, removes Python references, runs garbage collection, and
-clears the CUDA allocator cache before constructing the next model. This avoids
-trying to keep four large models resident on the 32 GiB GPU.
+Flask process 只在收到請求時才建構指定模型。Inference manager 快取一組
+`(model, checkpoint)`。切換其中任一項時，必須先卸載前一個模型、移除 Python
+reference、執行 garbage collection，並清除 CUDA allocator cache，之後才能
+建構新模型。如此可避免嘗試在 32 GiB GPU 同時常駐四個大型模型。
 
-SAM3's vendor runtime uses generic module names. The first implementation keeps
-it in the same process because this web application does not load the official
-SAM3 probe runtime that caused the documented evaluation collision. The four
-real GPU load tests must include model switching. If they demonstrate a module
-collision or unreleased CUDA memory, SAM3 will be moved behind a persistent
-isolated worker process without changing the public API or adapter result
-contract.
+SAM3 vendor runtime 使用通用 module 名稱。第一版仍放在同一個 process，因為
+本 Web 應用不會載入曾在評估流程造成衝突的官方 SAM3 probe runtime。四個真實
+GPU 載入測試必須包含模型切換。若測試證明存在 module collision 或 CUDA memory
+未釋放問題，則將 SAM3 移至持續運作的隔離 worker process，但不改動公開 API
+或 adapter 回傳格式。
 
-## Configuration and registry
+## 設定與 registry
 
-`Settings` gains explicit paths for:
+`Settings` 增加下列明確路徑與推論參數：
 
-- the SAM2 base checkpoint;
-- the SAM3 base checkpoint;
-- one task-checkpoint directory for each of the four web models;
-- SAM3 model input size, initially constrained to 512;
-- real-model inference tile size, stride, and batch size, initially 512, 384,
-  and 1.
+- SAM2 base checkpoint；
+- SAM3 base checkpoint；
+- 四個 Web 模型各自的任務 checkpoint 目錄；
+- SAM3 模型輸入尺寸，初始限制為 512；
+- 真實模型的 inference tile size、stride 與 batch size，初始值分別為 512、
+  384 與 1。
 
-All settings have repository-relative defaults and environment overrides. The
-registry owns public model IDs, labels, adapter factories, checkpoint roots,
-and the preferred default checkpoint. It lists only direct `.pt`, `.pth`, and
-`.ckpt` files. It never trusts a browser-provided path.
+所有設定皆提供 repository-relative 預設值與環境變數覆寫方式。Registry 負責
+公開 model ID、顯示名稱、adapter factory、checkpoint root 與偏好的預設
+checkpoint。它只列出目錄第一層的 `.pt`、`.pth` 與 `.ckpt` 檔案，絕不信任
+瀏覽器傳入的檔案路徑。
 
-The public IDs are:
+公開 model ID 如下：
 
 - `dummy`
 - `sam2_adapter`
@@ -91,122 +83,115 @@ The public IDs are:
 - `resunet50`
 - `convnext_unet`
 
-## Adapter behavior
+## Adapter 行為
 
-All adapters preserve the existing methods: `load`, `predict`, and `unload`.
-Real adapters use a shared image-normalization and tiled-probability helper so
-padding, overlap, reconstruction, thresholding, and output sizing do not drift
-between models.
+所有 adapter 保留既有的 `load`、`predict` 與 `unload` 方法。真實模型 adapter
+共用影像 normalization 與 tiled-probability helper，避免各模型的 padding、
+overlap、影像重建、threshold 與輸出尺寸行為不一致。
 
 ### SAM2 Adapter
 
-1. Load and validate the task-checkpoint dictionary on CPU.
-2. Verify its task, schema, base-checkpoint hash, image size, and adapter
-   metadata before allocating the model on CUDA.
-3. Construct `SAM2AdapterMaskDecoder` from the configured official SAM2.1
-   Hiera-L checkpoint.
-4. Load `adaptation_state` through the existing exact-name and exact-shape
-   trainable-state loader.
-5. Put the model in evaluation mode.
-6. Normalize RGB tiles with the ImageNet mean and standard deviation used in
-   training, run the prompt-free model, and convert logits with sigmoid.
+1. 在 CPU 載入並驗證任務 checkpoint dictionary。
+2. 在 CUDA 配置模型前，先驗證 task、schema、base-checkpoint hash、image size
+   與 adapter metadata。
+3. 使用設定的官方 SAM2.1 Hiera-L checkpoint 建構
+   `SAM2AdapterMaskDecoder`。
+4. 透過既有、會檢查完整 parameter name 與 shape 的 trainable-state loader
+   載入 `adaptation_state`。
+5. 將模型切換至 evaluation mode。
+6. 依訓練使用的 ImageNet mean 與 standard deviation 正規化 RGB tile，執行
+   prompt-free 模型，再以 sigmoid 將 logits 轉換為機率。
 
 ### SAM3 Adapter
 
-1. Load and validate the task checkpoint and its base-checkpoint hash on CPU.
-2. Construct `Sam3AdapterModel` with the configured official SAM3 checkpoint
-   and input size 512.
-3. Load `adaptation_state` through the exact trainable-state loader.
-4. Put the model in evaluation mode and run it under the same mixed-precision
-   contract used by the validated experiment.
-5. The wrapper accepts ImageNet-normalized 512-pixel source tiles and converts
-   output logits with sigmoid.
+1. 在 CPU 載入並驗證任務 checkpoint 與 base-checkpoint hash。
+2. 使用設定的官方 SAM3 checkpoint 與 512 input size 建構
+   `Sam3AdapterModel`。
+3. 透過精確比對 trainable state 的 loader 載入 `adaptation_state`。
+4. 將模型切換至 evaluation mode，並沿用已驗證實驗的 mixed-precision
+   contract 執行。
+5. Wrapper 接受經 ImageNet 正規化的 512-pixel source tile，再以 sigmoid
+   將輸出 logits 轉換為機率。
 
-The author's base-checkpoint mapping intentionally reports missing or
-shape-mismatched adapter parameters before the trained adaptation state is
-applied. The final adaptation state must have no missing, unexpected, or
-shape-mismatched trainable parameter.
+作者的 base-checkpoint mapping 會在套用已訓練 adaptation state 前，依設計
+回報缺少或 shape 不同的 adapter parameter。最終 adaptation state 不得有缺少、
+未預期或 shape 不相符的 trainable parameter。
 
-### ResUNet50 and ConvNeXt-Large U-Net
+### ResUNet50 與 ConvNeXt-Large U-Net
 
-The two web adapters share one implementation with an allowed-encoder guard.
-The checkpoint training arguments determine the encoder and class names.
-ResUNet accepts only `resnet50`; ConvNeXt U-Net accepts only the completed
-ConvNeXt-Large encoder. Each model is constructed with pretrained weights
-disabled, then the full saved `model` state is loaded strictly.
+兩個 Web adapter 共用一個實作，並各自限制允許的 encoder。Checkpoint 的訓練
+參數決定 encoder 與 class names。ResUNet 只接受 `resnet50`；ConvNeXt U-Net
+只接受已完成訓練的 ConvNeXt-Large encoder。建構模型時停用 pretrained
+weights，再以 strict 模式載入完整 `model` state。
 
-Both models receive ImageNet-normalized tiles. Their two-class logits become
-foreground probabilities through `softmax(logits, dim=1)[:, 1]`.
+兩個模型都接收 ImageNet-normalized tile。其雙類別 logits 透過
+`softmax(logits, dim=1)[:, 1]` 轉換為前景機率。
 
-## Arbitrary-size image inference
+## 任意尺寸圖片推論
 
-All real adapters operate on a common source space:
+所有真實 adapter 使用相同的來源空間：
 
-1. Convert the uploaded image to RGB.
-2. Pad the bottom and right edges when either dimension is below 512.
-3. Generate 512 by 512 windows with stride 384, including an edge-aligned final
-   window in each dimension.
-4. Normalize and infer in bounded batches. Start at batch size one for reliable
-   SAM3 memory use.
-5. Blend overlapping foreground probabilities with the existing Gaussian
-   weighting method used by U-Net full-image inference.
-6. Crop the probability map to the original dimensions.
-7. Apply the UI threshold once, after blending.
-8. Return a binary `uint8` mask containing only 0 and 255 and create the
-   standard RGB overlay.
+1. 將上傳圖片轉為 RGB。
+2. 任一邊小於 512 時，在下方與右方補齊。
+3. 以 stride 384 產生 512×512 window；每個維度都加入一個貼齊邊緣的最終
+   window。
+4. 將 tile 正規化後以受限 batch 執行推論。為確保 SAM3 記憶體穩定，初始
+   batch size 使用 1。
+5. 使用現有 U-Net full-image inference 的 Gaussian weighting 方法融合重疊
+   區域的前景機率。
+6. 將 probability map 裁切回原圖尺寸。
+7. 完成融合後只套用一次 UI threshold。
+8. 回傳只包含 0 與 255 的 binary `uint8` mask，並產生標準 RGB overlay。
 
-Threshold semantics are consequently identical across all four models. The UI
-threshold does not alter checkpoint selection or any recorded evaluation
-metric.
+因此四個模型的 threshold 語意完全相同。UI threshold 不會改變 checkpoint
+選擇或任何已記錄的 evaluation metric。
 
-## Errors and lifecycle
+## 錯誤處理與生命週期
 
-Model loading fails with a user-readable error when:
+遇到下列情況時，模型載入必須回傳使用者可理解的錯誤：
 
-- a base or task checkpoint is absent;
-- the selected path escapes its configured directory;
-- a checkpoint dictionary has the wrong schema or task;
-- its base-checkpoint hash does not match;
-- its architecture, input size, classes, parameter names, or tensor shapes do
-  not match the registered web model;
-- CUDA is unavailable for a real model; or
-- inference exhausts GPU memory.
+- 缺少 base checkpoint 或任務 checkpoint；
+- 選取的路徑逃離其設定目錄；
+- checkpoint dictionary 的 schema 或 task 不符；
+- base-checkpoint hash 不符；
+- architecture、input size、class、parameter name 或 tensor shape 與註冊的
+  Web 模型不符；
+- 真實模型需要執行時 CUDA 無法使用；
+- 推論耗盡 GPU memory。
 
-A failed new load must not be cached. The previous adapter is unloaded before
-the new allocation, and the manager remains able to load another model after a
-failure. Logs include model ID, checkpoint name, device, load time, inference
-time, input size, tile count, and failure stage, but never image bytes.
+載入失敗的新模型不得寫入 cache。配置新模型前先卸載舊 adapter；失敗後
+manager 仍必須能載入其他模型。Log 記錄 model ID、checkpoint name、device、
+load time、inference time、input size、tile count 與失敗階段，但不得記錄圖片
+bytes。
 
-## Verification
+## 驗證方式
 
-Fast automated tests use small fake models and synthetic checkpoints to cover:
+快速自動化測試使用小型 fake model 與合成 checkpoint，涵蓋：
 
-- registry discovery and safe path resolution for all public model IDs;
-- checkpoint-schema validation and architecture guards;
-- sigmoid versus softmax probability conversion;
-- tiling, overlap blending, original-size restoration, and binary mask output;
-- cache reuse, unload on switching, and recovery after load failure;
-- Flask model listing, weight listing, and inference response contracts.
+- 所有公開 model ID 的 registry discovery 與安全路徑解析；
+- checkpoint schema 驗證與 architecture guard；
+- sigmoid 與 softmax probability conversion；
+- tiling、overlap blending、原始尺寸還原與 binary mask 輸出；
+- cache 重用、切換時 unload，以及載入失敗後恢復；
+- Flask model listing、weight listing 與 inference response contract。
 
-An explicit GPU integration suite then uses the actual `fold0/best.pt` for all
-four models. For each model it must:
+明確啟動的 GPU integration suite 使用四個模型各自真實的 `fold0/best.pt`。
+每個模型都必須：
 
-1. construct the real architecture;
-2. validate and load the real checkpoint;
-3. infer one representative repository image;
-4. confirm mask and overlay sizes equal the uploaded image size;
-5. confirm mask values are binary and output probabilities are finite; and
-6. exercise the Flask `/api/infer` path for at least one real model.
+1. 建構真實 architecture；
+2. 驗證並載入真實 checkpoint；
+3. 對一張 repository 內的代表圖片執行推論；
+4. 確認 mask 與 overlay 尺寸等於上傳圖片尺寸；
+5. 確認 mask value 為 binary，且輸出 probability 均為 finite；
+6. 至少以一個真實模型走過 Flask `/api/infer` 路徑。
 
-The suite also switches SAM2 -> SAM3 -> ResUNet50 -> ConvNeXt U-Net in one
-process and records CUDA memory after each unload. Any temporary mask or overlay
-is written only under pytest's temporary directory. Existing dummy and web
-tests must continue to pass.
+同一 suite 也必須在單一 process 依序切換 SAM2 -> SAM3 -> ResUNet50 ->
+ConvNeXt U-Net，並記錄每次 unload 後的 CUDA memory。暫存 mask 或 overlay
+只能寫入 pytest temporary directory。現有 dummy 與 Web 測試必須繼續通過。
 
-## Documentation and operational handoff
+## 文件與操作交付
 
-The web README and `.env.example` will document the four path groups, the
-recommended `best.pt`, expected first-load latency, one-model cache behavior,
-and the exact commands for fast tests and the opt-in real GPU suite. The final
-handoff will report each real checkpoint tested, whether strict validation
-passed, the representative image used, and the observed load/inference result.
+Web README 與 `.env.example` 將說明四組路徑、建議使用的 `best.pt`、預期首次
+載入時間、單模型 cache 行為，以及快速測試與 opt-in 真實 GPU suite 的精確
+命令。最終交付須回報每個實測的真實 checkpoint、strict validation 是否通過、
+使用的代表圖片，以及觀察到的載入與推論結果。
