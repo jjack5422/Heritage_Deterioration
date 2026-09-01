@@ -1,0 +1,9 @@
+{
+  "experiment_id": "2026-08-26_sam2-sam3-native-probe-adapter_seed42",
+  "groups": {"A": "complete", "B": "complete", "D": "complete", "C": "historical_baseline_audited"},
+  "folds": 5,
+  "outer_test": "clean_once_after_validation_checkpoint_selection",
+  "reporting_audit": "PASS",
+  "visual_audit": ["loss_curve", "best_composite", "worst_composite"],
+  "source_level_metrics": {"A": "complete", "B": "complete", "D": "complete", "C": "unavailable_in_historical_run"}
+}

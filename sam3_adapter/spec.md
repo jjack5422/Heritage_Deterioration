@@ -109,6 +109,12 @@ mask_manifest_sha256 = a457d40d9b819c1787e425c73f0524fa9ad4b903bf2efd28912c28b55
 
 正式訓練前必須完成至少 20 張代表性薄裂縫影像的 preprocessing QA，涵蓋不同 `source_group`、低對比、細裂縫與密集裂縫。QA 必須檢視原始影像、model-input resize 與 logits 回映射 overlay，確認裂縫位置、邊界覆蓋與四周像素沒有固定偏移或裁切。若 QA 失敗，停止訓練並回報，不得自行改用 512、padding 或其他解析度。
 
+### 4.2 Backbone 規模可比性紀錄
+
+SAM2 端固定使用已核准的 Hiera-L checkpoint（image encoder 約 2.13 億參數）。截至本實驗執行時，本機可驗證的官方 SAM3 發布只提供單一 `sam3.pt` 視覺模型（ViT embed dim 1024、depth 32）；抽出的 SAM3 vision backbone 約 4.55 億參數，並沒有可載入且同等預訓練品質的 SAM3-B／SAM3-L 小型 checkpoint。因此 B/D 使用官方唯一可驗證 checkpoint，而不是自行縮小 ViT 或以未預訓練模型替代。
+
+這代表 A/B 的共同 probe protocol 已控制 decoder、可訓練參數量與資料流程，但沒有控制 backbone capacity；A/B 結果必須標示為「官方 native backbone 表徵比較」，不可寫成嚴格等參數量比較。若未來取得官方 SAM3 小型 checkpoint，應新增同資料、同 fold 的等規模重跑，不覆寫本實驗結果。
+
 ## 5. 鎖定訓練設定
 
 | 設定 | 鎖定值 |
