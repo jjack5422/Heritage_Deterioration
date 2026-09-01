@@ -57,6 +57,9 @@ _agents/
 tmp/
 meeting/
 segment-anything-2/
+segment-anything-3/
+sam3_adapter_upstream/
+sam3_adapter/vendor_upstream_runtime/
 參考文獻/
 古蹟裂縫/
 

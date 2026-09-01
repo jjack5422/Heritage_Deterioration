@@ -594,6 +594,7 @@ def _write_source_history(
             precision=float(row["precision"]) if "precision" in row else None,
             recall=float(row["recall"]) if "recall" in row else None,
             iou=float(row["iou"]) if "iou" in row else None,
+            accuracy=float(row["accuracy"]) if row.get("accuracy") else None,
             learning_rate=float(row["learning_rate"]),
         )
     return writer, reporter

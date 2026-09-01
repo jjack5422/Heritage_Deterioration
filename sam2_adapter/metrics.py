@@ -5,6 +5,16 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
+
+def pixel_accuracy(tp: int, fp: int, fn: int, valid_pixels: int) -> float:
+    """Return binary pixel accuracy over non-ignored pixels."""
+
+    if valid_pixels <= 0:
+        raise ValueError("valid_pixels must be positive")
+    if min(tp, fp, fn) < 0 or fp + fn > valid_pixels:
+        raise ValueError("confusion counts are inconsistent with valid_pixels")
+    return (valid_pixels - fp - fn) / valid_pixels
+
 def counts_summary(tp: int, fp: int, fn: int) -> dict[str, int | float | None]:
     """Return standard foreground pixel metrics, retaining raw sufficient counts."""
 
