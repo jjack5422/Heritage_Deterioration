@@ -43,6 +43,7 @@ from sam2_sac.h0_core import (
     trainable_state_dict,
 )
 from sam2_sac.metrics import binary_summary
+from sam2_adapter.metrics import pixel_accuracy
 from sam2_sac.reporting import (
     EpochReporter,
     RunLayout,
@@ -605,6 +606,10 @@ def _train_stage(
                 precision=micro["mprecision"],
                 recall=micro["mrecall"],
                 iou=micro["miou"],
+                accuracy=pixel_accuracy(
+                    int(micro["tp"]), int(micro["fp"]), int(micro["fn"]),
+                    plan.val_counts[0] + plan.val_counts[1],
+                ),
                 learning_rate=learning_rate,
             )
             _save_checkpoint(

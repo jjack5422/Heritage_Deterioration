@@ -23,6 +23,7 @@ EPOCH_COLUMNS = (
     "precision",
     "recall",
     "iou",
+    "accuracy",
     "learning_rate",
 )
 PER_IMAGE_COLUMNS = (
@@ -33,6 +34,7 @@ PER_IMAGE_COLUMNS = (
     "precision",
     "recall",
     "iou",
+    "accuracy",
     "tp",
     "fp",
     "fn",
@@ -97,7 +99,7 @@ def append_log(layout: RunLayout, message: str) -> None:
 
 
 class EpochReporter:
-    """Write the exact seven mandatory TensorBoard tags and canonical CSV rows."""
+    """Write the mandatory TensorBoard tags and canonical CSV rows."""
 
     def __init__(self, epoch_csv: Path, writer: Any) -> None:
         self.writer = writer
@@ -116,6 +118,7 @@ class EpochReporter:
         precision: float | None,
         recall: float | None,
         iou: float | None,
+        accuracy: float | None,
         learning_rate: float,
     ) -> dict[str, int | float | str]:
         row: dict[str, int | float | str] = {
@@ -126,6 +129,7 @@ class EpochReporter:
             "precision": _finite_or_blank(precision),
             "recall": _finite_or_blank(recall),
             "iou": _finite_or_blank(iou),
+            "accuracy": _finite_or_blank(accuracy),
             "learning_rate": _finite_or_blank(learning_rate),
         }
         for tag, column in (
@@ -135,6 +139,7 @@ class EpochReporter:
             ("metrics/precision", "precision"),
             ("metrics/recall", "recall"),
             ("metrics/iou", "iou"),
+            ("metrics/accuracy", "accuracy"),
             ("optimizer/lr", "learning_rate"),
         ):
             value = row[column]
@@ -164,6 +169,7 @@ def binary_metric_row(target: np.ndarray, prediction: np.ndarray) -> dict[str, i
     recall = _ratio(tp, tp + fn)
     f1 = _ratio(2 * tp, 2 * tp + fp + fn) if gt_pixels else ""
     iou = _ratio(tp, tp + fp + fn) if gt_pixels else ""
+    accuracy = _ratio(target.size - fp - fn, target.size)
     if gt_pixels and pred_pixels == 0:
         reason = "false_negative"
     elif not gt_pixels and pred_pixels:
@@ -179,6 +185,7 @@ def binary_metric_row(target: np.ndarray, prediction: np.ndarray) -> dict[str, i
         "precision": precision,
         "recall": recall,
         "iou": iou,
+        "accuracy": accuracy,
         "tp": tp,
         "fp": fp,
         "fn": fn,

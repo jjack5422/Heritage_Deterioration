@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
-from sam2_adapter.metrics import binary_summary
+from sam2_adapter.metrics import binary_summary, pixel_accuracy
+
+
+def test_pixel_accuracy_uses_all_valid_pixels() -> None:
+    assert pixel_accuracy(7, 2, 3, 20) == 0.75
 
 
 def test_binary_summary_reports_pixel_micro_and_panel_macro() -> None:

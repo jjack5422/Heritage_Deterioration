@@ -25,6 +25,7 @@ def test_reporting_exports_required_static_artifacts(tmp_path) -> None:
         precision=0.6,
         recall=0.4,
         iou=0.33,
+        accuracy=0.9,
         learning_rate=5e-4,
     )
     row = save_qualitative_example(
