@@ -27,6 +27,7 @@ from .reporting import EpochReporter, RunLayout, finalize_reporting, save_concep
 from .sam3_integration import DEFAULT_CHECKPOINT
 from .splits import fold_membership, load_split_contract, source_group_index
 from .training import (
+    RouterHealthGate,
     assert_finite_gradients,
     build_optimizer_and_scheduler,
     build_stage2_hard_pool,
@@ -324,6 +325,7 @@ def train_fold(args: argparse.Namespace) -> Path:
     router_handle = router_path.open("w", encoding="utf-8", newline="")
     router_writer = csv.DictWriter(router_handle, fieldnames=("epoch", "stage", "concept", "layer", "expert", "top1_usage", "top2_usage", "entropy", "logits_magnitude"))
     router_writer.writeheader()
+    router_health = RouterHealthGate()
     global_epoch = 0
     stage1_best = float("inf")
     stage1_best_path = layout.checkpoints / "stage1_best.pt"
@@ -344,6 +346,9 @@ def train_fold(args: argparse.Namespace) -> Path:
         writer.add_scalar("router/temperature", temperature, global_epoch)
         router_writer.writerows(router_rows)
         router_handle.flush()
+        aggregated_usage = router_health.update(router_rows)
+        for (layer_index, expert_index), usage in aggregated_usage.items():
+            writer.add_scalar(f"router/layer_{layer_index}/expert_{expert_index}_usage", usage, global_epoch)
         if val_loss < stage1_best:
             stage1_best = val_loss
             _save_checkpoint(stage1_best_path, model, stage="stage1", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage1_bundle.optimizer, scheduler=stage1_bundle.scheduler)
@@ -377,6 +382,9 @@ def train_fold(args: argparse.Namespace) -> Path:
         writer.add_scalar("metrics/macro_f1", macro["f1"], global_epoch)
         router_writer.writerows(router_rows)
         router_handle.flush()
+        aggregated_usage = router_health.update(router_rows)
+        for (layer_index, expert_index), usage in aggregated_usage.items():
+            writer.add_scalar(f"router/layer_{layer_index}/expert_{expert_index}_usage", usage, global_epoch)
         if val_loss < stage2_best:
             stage2_best = val_loss
             _save_checkpoint(stage2_best_path, model, stage="stage2", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage2_bundle.optimizer, scheduler=stage2_bundle.scheduler)

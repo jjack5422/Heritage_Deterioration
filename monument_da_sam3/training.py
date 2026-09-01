@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import math
 import random
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Any, Iterable
 
 import numpy as np
 import torch
@@ -18,6 +19,31 @@ from .da_moe import router_temperature
 class OptimizerBundle:
     optimizer: torch.optim.Optimizer
     scheduler: torch.optim.lr_scheduler.LRScheduler
+
+
+class RouterHealthGate:
+    """Stop after an expert is below 5% top-2 usage for three epochs."""
+
+    def __init__(self, *, minimum_usage: float = 0.05, patience: int = 3) -> None:
+        self.minimum_usage = minimum_usage
+        self.patience = patience
+        self.low_usage_streak: dict[tuple[int, int], int] = defaultdict(int)
+
+    def update(self, rows: Iterable[dict[str, Any]]) -> dict[tuple[int, int], float]:
+        grouped: dict[tuple[int, int], list[float]] = defaultdict(list)
+        for row in rows:
+            grouped[(int(row["layer"]), int(row["expert"]))].append(float(row["top2_usage"]))
+        if set(grouped) != {(layer, expert) for layer in range(3) for expert in range(4)}:
+            raise RuntimeError("router health rows do not cover all three layers and four experts")
+        aggregated = {key: sum(values) / len(values) for key, values in grouped.items()}
+        for key, usage in aggregated.items():
+            self.low_usage_streak[key] = self.low_usage_streak[key] + 1 if usage < self.minimum_usage else 0
+            if self.low_usage_streak[key] >= self.patience:
+                raise RuntimeError(
+                    f"router collapse: layer {key[0]} expert {key[1]} usage={usage:.6f} "
+                    f"for {self.low_usage_streak[key]} consecutive epochs"
+                )
+        return aggregated
 
 
 def set_reproducible_seed(seed: int = 42) -> None:
