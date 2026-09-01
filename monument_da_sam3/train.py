@@ -399,7 +399,12 @@ def train_fold(args: argparse.Namespace) -> Path:
     finalize_reporting(
         layout, writer=writer, reporter=reporter, validation_rows=validation_rows,
         selected_epoch=int(selected["epoch"]),
-        outer_test_metrics={"status": "deferred_until_all_five_validation_checkpoints_are_locked"},
+        outer_test_metrics={
+            "status": "deferred_until_all_five_validation_checkpoints_are_locked",
+            "selected_epoch": int(selected["epoch"]),
+            "selection_source": "stage2 minimum validation segmentation loss",
+            "outer_test_excluded_from_selection": True,
+        },
     )
     print(json.dumps({"status": "complete", "run_root": str(run_root), "selected_checkpoint": str(stage2_best_path)}, ensure_ascii=False), flush=True)
     return run_root

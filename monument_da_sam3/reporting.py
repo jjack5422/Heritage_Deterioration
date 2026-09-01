@@ -13,6 +13,7 @@ from sam2_adapter.reporting import (
     RunLayout,
     binary_metric_row,
     finalize_reporting,
+    write_validation_rows,
     write_json,
 )
 
@@ -52,6 +53,13 @@ def save_concept_qualitative(
     Image.fromarray(pred, mode="RGB").save(paths["prediction_path"])
     Image.fromarray(np.clip(overlay, 0, 255).astype(np.uint8), mode="RGB").save(paths["overlay_path"])
     row = binary_metric_row(target, prediction)
+    # The reporting contract requires finite per-image F1/IoU. For an empty
+    # target, empty prediction is a correct negative (1.0); any prediction is
+    # a false-positive failure (0.0).
+    if row["f1"] == "":
+        empty_score = 1.0 if int(row["pred_pixels"]) == 0 else 0.0
+        row["f1"] = empty_score
+        row["iou"] = empty_score
     row.update({
         "image": f"{concept}/{image_id}",
         "split": "validation",
@@ -66,5 +74,6 @@ __all__ = [
     "RunLayout",
     "finalize_reporting",
     "save_concept_qualitative",
+    "write_validation_rows",
     "write_json",
 ]
