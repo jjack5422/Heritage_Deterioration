@@ -106,7 +106,8 @@ loss: paint loss, a missing area in the paint layer that exposes the substrate
 
 Hash 必須涵蓋 schema、prompt set ID、channel order、canonical prompts、aliases 與 raw
 labels；不依 YAML key 原始排列或系統路徑。`train.yaml` 只保存已核准、可配置但受
-驗證器鎖定的 512、MoE、optimizer、stage 與 tiling 參數。
+驗證器鎖定的 512、MoE、optimizer、stage、`positive_weight=2.0`、
+`focal_gamma=2.0` 與 tiling 參數。
 
 ### 1.3 驗證與提交
 
@@ -258,7 +259,11 @@ git commit -m "feat: lock monument group folds"
 
 鎖定下列行為：
 
-- focal 與 presence 對每類 valid samples/pixels 計算；
+- weighted focal 與 presence 對每類 valid samples/pixels 計算；
+- weighted focal 先用 `BCEWithLogits(pos_weight=2.0, reduction=none)`，再乘
+  `(1-p_t)^gamma`，其中 `gamma=2.0`；
+- 在相同 logit 難度下 background:positive loss 與 gradient coefficient 為 1:2；
+- focal 只以 valid pixel 數平均，不以 class-weight sum 當分母；
 - Dice 只平均具有 valid positives 的 samples；
 - 整 batch 無該類 positive 時 Dice 是 graph-connected zero，backward 有效且無 NaN；
 - ignored pixels 的 logits 改變不影響 loss；
@@ -273,6 +278,7 @@ git commit -m "feat: lock monument group folds"
 
 - threshold 固定 0.5；
 - per-class precision/recall/F1/IoU；
+- per-class accuracy 與兩類 macro accuracy；
 - macro 是兩個 foreground classes 的算術平均，不含 background；
 - ignored pixels 完全不進 confusion counts；
 - 支援 tile、image、source-group 與 fold aggregation；
@@ -662,7 +668,8 @@ git commit -m "feat: add DA SAM3 training workflow"
 - selected validation checkpoint 已鎖定才允許 outer-test；
 - outer-test data 不可回寫 threshold、stage、epoch、prompt、sampler 或 hyperparameters；
 - threshold 永遠 0.5；
-- 輸出 per-class、macro、per-image、per-source-group、per-fold counts/metrics；
+- 輸出 per-class、macro、per-image、per-source-group、per-fold counts/metrics，包含
+  reporting contract 必要的 accuracy；
 - Stage 1/Stage 2 paired fold differences 正確；
 - 5-fold mean/std/best/worst/range 正確；
 - ignored pixels 不進計算；
