@@ -1,0 +1,12 @@
+decord
+einops
+flask
+gradio
+numpy
+pillow
+psutil
+pycocotools
+python-rapidjson
+python-dotenv
+pytest
+requests
