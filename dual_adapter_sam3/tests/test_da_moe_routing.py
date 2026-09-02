@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from monument_da_sam3.da_moe import DaMoeFfn, router_temperature
+from dual_adapter_sam3.da_moe import DaMoeFfn, router_temperature
 
 
 def test_top_two_routing_and_output_contract() -> None:

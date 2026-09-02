@@ -2,7 +2,7 @@ from torch import nn
 
 import pytest
 
-from monument_da_sam3.training import RouterHealthGate, build_stage2_hard_pool
+from dual_adapter_sam3.training import RouterHealthGate, build_stage2_hard_pool
 
 
 def test_hard_pool_is_top_quartile_union_both_class_tiles() -> None:

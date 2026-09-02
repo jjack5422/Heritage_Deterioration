@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 
-from monument_da_sam3.da_moe import DaMoeFfn
+from dual_adapter_sam3.da_moe import DaMoeFfn
 
 
 def test_dpe_is_zero_at_initialization_and_receives_gradient() -> None:

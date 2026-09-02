@@ -1,6 +1,6 @@
 import torch
 
-from monument_da_sam3.data import make_multilabel_targets
+from dual_adapter_sam3.data import make_multilabel_targets
 
 
 def test_raw_labels_map_to_independent_targets_and_valid_masks() -> None:

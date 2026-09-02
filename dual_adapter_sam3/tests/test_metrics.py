@@ -1,6 +1,6 @@
 import torch
 
-from monument_da_sam3.metrics import MultilabelConfusion
+from dual_adapter_sam3.metrics import MultilabelConfusion
 
 
 def test_metrics_ignore_invalid_pixels_and_macro_excludes_background() -> None:

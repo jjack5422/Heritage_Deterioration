@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from monument_da_sam3.reporting import RunLayout, save_concept_qualitative
+from dual_adapter_sam3.reporting import RunLayout, save_concept_qualitative
 
 
 def test_qualitative_is_namespaced_by_concept(tmp_path: Path) -> None:

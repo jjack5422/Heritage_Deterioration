@@ -1,4 +1,4 @@
-from monument_da_sam3.evaluate_cross_validation import _finite_binary_row, _mean_std, _metrics_from_rows
+from dual_adapter_sam3.evaluate_cross_validation import _finite_binary_row, _mean_std, _metrics_from_rows
 
 import numpy as np
 

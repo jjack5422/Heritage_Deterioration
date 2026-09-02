@@ -12,10 +12,12 @@ from sam2_adapter.reporting import (
     EpochReporter,
     RunLayout,
     binary_metric_row,
-    finalize_reporting,
+    finalize_reporting as _finalize_standard_reporting,
     write_validation_rows,
     write_json,
 )
+
+from .class_report import build_class_report
 
 
 def save_concept_qualitative(
@@ -67,6 +69,28 @@ def save_concept_qualitative(
         **{key: path.relative_to(layout.root).as_posix() for key, path in paths.items()},
     })
     return row
+
+
+def finalize_reporting(
+    layout: RunLayout,
+    *,
+    writer: Any,
+    reporter: EpochReporter,
+    validation_rows: list[dict[str, Any]],
+    selected_epoch: int,
+    outer_test_metrics: dict[str, Any],
+) -> None:
+    """Build the standard artifacts, then replace galleries with class-specific pages."""
+
+    _finalize_standard_reporting(
+        layout,
+        writer=writer,
+        reporter=reporter,
+        validation_rows=validation_rows,
+        selected_epoch=selected_epoch,
+        outer_test_metrics=outer_test_metrics,
+    )
+    build_class_report(layout.root)
 
 
 __all__ = [

@@ -1,6 +1,6 @@
 import torch
 
-from monument_da_sam3.losses import masked_positive_dice, masked_weighted_focal, multilabel_objective, router_z_loss
+from dual_adapter_sam3.losses import masked_positive_dice, masked_weighted_focal, multilabel_objective, router_z_loss
 
 
 def test_weighted_focal_has_exact_two_to_one_positive_penalty() -> None:

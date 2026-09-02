@@ -20,10 +20,11 @@ from torch import Tensor
 
 from sam2_adapter.reporting import binary_metric_row
 
+from .class_report import build_class_report
 from .concepts import CHANNEL_ORDER, load_concept_registry
 from .data import MonumentDeteriorationDataset
 from .metrics import MultilabelConfusion
-from .model import MonumentDaSam3
+from .model import SUPPORTED_MODEL_VARIANTS, DualAdapterSam3, build_dual_adapter_model
 from .reporting import RunLayout, save_concept_qualitative, write_json, write_validation_rows
 from .sam3_integration import DEFAULT_CHECKPOINT, file_sha256
 from .splits import fold_membership, load_split_contract, source_group_index
@@ -31,9 +32,11 @@ from .train import (
     DEFAULT_DATASET,
     DEFAULT_EXPERIMENT,
     PROJECT_ROOT,
+    _checkpoint_model_variant,
     _load_adaptation,
     _loader,
     _to_device,
+    _variant_run_root,
 )
 
 
@@ -79,23 +82,44 @@ def _checkpoint_record(path: Path) -> dict[str, Any]:
         "validation_segmentation_loss": float(checkpoint["validation_segmentation_loss"]),
         "prompt_contract_sha256": checkpoint["prompt_contract_sha256"],
         "split_contract_sha256": checkpoint["split_contract_sha256"],
+        "model_variant": _checkpoint_model_variant(checkpoint),
     }
 
 
-def lock_selected_checkpoints(experiment_root: Path, split_hash: str, prompt_hash: str) -> dict[str, Any]:
+def lock_selected_checkpoints(
+    experiment_root: Path,
+    split_hash: str,
+    prompt_hash: str,
+    *,
+    model_variant: str = "da_sam3",
+) -> dict[str, Any]:
     folds: list[dict[str, Any]] = []
     for fold_index in range(5):
-        layout = RunLayout.create(experiment_root / "5fold" / "da_sam3" / f"fold{fold_index}")
-        stage1 = _checkpoint_record(layout.checkpoints / "stage1_best.pt")
-        stage2 = _checkpoint_record(layout.checkpoints / "stage2_best.pt")
+        fold_root = _variant_run_root(experiment_root, model_variant, fold_index)
+        checkpoint_dir = fold_root / "artifacts" / "checkpoints"
+        stage1_path = checkpoint_dir / "stage1_best.pt"
+        stage2_path = checkpoint_dir / "stage2_best.pt"
+        for checkpoint_path in (stage1_path, stage2_path):
+            if not checkpoint_path.is_file():
+                raise FileNotFoundError(
+                    f"{model_variant} fold{fold_index} selected checkpoint is missing: {checkpoint_path}"
+                )
+        stage1 = _checkpoint_record(stage1_path)
+        stage2 = _checkpoint_record(stage2_path)
         if stage1["stage"] != "stage1" or stage2["stage"] != "stage2":
             raise RuntimeError(f"fold{fold_index} selected checkpoint stage mismatch")
         for record in (stage1, stage2):
             if record["prompt_contract_sha256"] != prompt_hash or record["split_contract_sha256"] != split_hash:
                 raise RuntimeError(f"fold{fold_index} selected checkpoint contract mismatch")
+            if record["model_variant"] != model_variant:
+                raise RuntimeError(
+                    f"fold{fold_index} checkpoint model variant {record['model_variant']!r} "
+                    f"does not match requested {model_variant!r}"
+                )
         folds.append({"fold": fold_index, "stage1": stage1, "stage2": stage2})
     payload: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
+        "model_variant": model_variant,
         "selection_boundary": "validation_only; outer-test was not read before this lock",
         "prompt_contract_sha256": prompt_hash,
         "split_contract_sha256": split_hash,
@@ -139,7 +163,7 @@ def _source_group_metrics(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
 @torch.no_grad()
 def evaluate_stage(
-    model: MonumentDaSam3,
+    model: DualAdapterSam3,
     loader: torch.utils.data.DataLoader,
     device: torch.device,
     *,
@@ -176,7 +200,7 @@ def evaluate_stage(
 
 @torch.no_grad()
 def refresh_validation_artifacts(
-    model: MonumentDaSam3,
+    model: DualAdapterSam3,
     loader: torch.utils.data.DataLoader,
     device: torch.device,
     layout: RunLayout,
@@ -224,6 +248,7 @@ def _run_report_builder(layout: RunLayout) -> None:
     )
     if result.returncode:
         raise RuntimeError(f"training-output-reporting builder failed: {result.stderr or result.stdout}")
+    build_class_report(layout.root)
 
 
 def _mean_std(values: list[float]) -> dict[str, float]:
@@ -236,7 +261,21 @@ def _mean_std(values: list[float]) -> dict[str, float]:
     }
 
 
-def build_cross_validation_summary(experiment_root: Path, fold_results: list[dict[str, Any]]) -> dict[str, Any]:
+def build_cross_validation_summary(
+    experiment_root: Path,
+    fold_results: list[dict[str, Any]],
+    *,
+    model_variant: str = "da_sam3",
+) -> dict[str, Any]:
+    if model_variant not in SUPPORTED_MODEL_VARIANTS:
+        raise ValueError(f"unsupported model variant: {model_variant!r}")
+    mismatched = [
+        int(result["fold"])
+        for result in fold_results
+        if result.get("model_variant", model_variant) != model_variant
+    ]
+    if mismatched:
+        raise RuntimeError(f"cross-validation fold model variant mismatch: {mismatched}")
     stages: dict[str, Any] = {}
     for stage in ("stage1", "stage2"):
         stage_summary: dict[str, Any] = {"macro": {}, "per_class": {}}
@@ -262,6 +301,7 @@ def build_cross_validation_summary(experiment_root: Path, fold_results: list[dic
         value.update(_mean_std(value["per_fold"]))
     summary = {
         "schema_version": 1,
+        "model_variant": model_variant,
         "fold_count": 5,
         "primary_metric": "stage2 macro foreground F1, arithmetic mean across folds",
         "standard_deviation": "sample standard deviation (N-1)",
@@ -291,12 +331,12 @@ def build_cross_validation_summary(experiment_root: Path, fold_results: list[dic
         "<tr>" + f"<td>{result['fold']}</td>" + "".join(
             f"<td>{float(result['stage2']['macro'][metric]):.4f}</td>"
             for metric in ("precision", "recall", "f1", "iou", "accuracy")
-        ) + f'<td><a href="../5fold/da_sam3/fold{result["fold"]}/reports/index.html">Fold report</a></td></tr>'
+        ) + f'<td><a href="../5fold/{model_variant}/fold{result["fold"]}/reports/index.html">Fold report</a></td></tr>'
         for result in fold_results
     )
-    html = f"""<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>DA-SAM3 five-fold report</title>
+    html = f"""<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Dual-Adapter SAM3 five-fold report</title>
 <style>body{{font-family:system-ui,sans-serif;max-width:1100px;margin:auto;padding:24px;color:#17202a}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #ccd;padding:8px;text-align:right}}th:first-child,td:first-child{{text-align:left}}code{{background:#eef;padding:2px 5px}}</style></head><body>
-<h1>Monument DA-SAM3 512 five-fold outer-test report</h1>
+<h1>{model_variant} 512 five-fold outer-test report</h1>
 <p>Primary Stage2 Macro-F1: <strong>{stage2_macro['f1']['mean']:.4f} ± {stage2_macro['f1']['std_sample']:.4f}</strong> (sample SD).</p>
 <p>Outer-test was excluded from checkpoint, prompt, threshold, and hyperparameter selection. Threshold is fixed at 0.5.</p>
 <table><thead><tr><th>Fold</th><th>Precision</th><th>Recall</th><th>Macro-F1</th><th>IoU</th><th>Accuracy</th><th>Artifacts</th></tr></thead><tbody>{table_rows}</tbody></table>
@@ -314,19 +354,29 @@ def run(args: argparse.Namespace) -> Path:
     experiment_root = PROJECT_ROOT / "runs" / args.experiment_id
     registry = load_concept_registry(args.concepts)
     split = load_split_contract(args.splits, dataset_root=args.dataset)
-    locked = lock_selected_checkpoints(experiment_root, split.sha256, registry.sha256)
+    locked = lock_selected_checkpoints(
+        experiment_root,
+        split.sha256,
+        registry.sha256,
+        model_variant=args.model_variant,
+    )
     group_index = source_group_index(split)
     device = torch.device("cuda")
     fold_results: list[dict[str, Any]] = []
     for fold_record in locked["folds"]:
         fold_index = int(fold_record["fold"])
         membership = fold_membership(split, fold_index)
-        layout = RunLayout.create(experiment_root / "5fold" / "da_sam3" / f"fold{fold_index}")
+        layout = RunLayout.create(_variant_run_root(experiment_root, args.model_variant, fold_index))
         outer_dataset = MonumentDeteriorationDataset(args.dataset, membership.outer_test, group_index, train_augmentation=False)
         validation_dataset = MonumentDeteriorationDataset(args.dataset, membership.validation, group_index, train_augmentation=False)
         outer_loader = _loader(outer_dataset, batch_size=args.batch_size, train=False, workers=args.workers)
         validation_loader = _loader(validation_dataset, batch_size=args.batch_size, train=False, workers=args.workers)
-        model = MonumentDaSam3(registry, checkpoint=args.checkpoint, device=device).to(device)
+        model = build_dual_adapter_model(
+            registry,
+            model_variant=args.model_variant,
+            checkpoint=args.checkpoint,
+            device=device,
+        ).to(device)
         stage_rows: list[dict[str, Any]] = []
         stage_metrics: dict[str, Any] = {}
         for stage in ("stage1", "stage2"):
@@ -339,6 +389,7 @@ def run(args: argparse.Namespace) -> Path:
         selected_epoch = int(fold_record["stage2"]["epoch"])
         outer_payload = {
             "status": "complete",
+            "model_variant": args.model_variant,
             "selected_epoch": selected_epoch,
             "selected_checkpoint_sha256": fold_record["stage2"]["sha256"],
             "selection_source": "stage2 minimum validation segmentation loss",
@@ -353,11 +404,15 @@ def run(args: argparse.Namespace) -> Path:
         _load_adaptation(Path(fold_record["stage2"]["path"]), model, expected_prompt_hash=registry.sha256, expected_split_hash=split.sha256)
         refresh_validation_artifacts(model, validation_loader, device, layout)
         _run_report_builder(layout)
-        fold_results.append({"fold": fold_index, **stage_metrics})
+        fold_results.append({"fold": fold_index, "model_variant": args.model_variant, **stage_metrics})
         print(json.dumps({"fold": fold_index, "stage2_macro": stage_metrics["stage2"]["macro"]}, ensure_ascii=False), flush=True)
         del model
         torch.cuda.empty_cache()
-    build_cross_validation_summary(experiment_root, fold_results)
+    build_cross_validation_summary(
+        experiment_root,
+        fold_results,
+        model_variant=args.model_variant,
+    )
     print(json.dumps({"status": "complete", "report": str(experiment_root / "reports" / "cross_validation.html")}, ensure_ascii=False), flush=True)
     return experiment_root
 
@@ -365,6 +420,11 @@ def run(args: argparse.Namespace) -> Path:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--experiment-id", default=DEFAULT_EXPERIMENT)
+    parser.add_argument(
+        "--model-variant",
+        choices=SUPPORTED_MODEL_VARIANTS,
+        default="da_sam3",
+    )
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET)
     parser.add_argument("--concepts", type=Path, default=PROJECT_ROOT / "configs" / "concepts.yaml")
     parser.add_argument("--splits", type=Path, default=PROJECT_ROOT / "configs" / "splits.json")

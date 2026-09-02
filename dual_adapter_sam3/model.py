@@ -11,19 +11,29 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .concepts import CHANNEL_ORDER, ConceptRegistry, canonical_prompt_texts
-from .sam3_integration import DEFAULT_CHECKPOINT, MOE_LAYER_INDICES, build_official_da_sam3
+from .sam3_integration import (
+    DEFAULT_CHECKPOINT,
+    MOE_LAYER_INDICES,
+    build_official_da_sam3,
+    build_official_visual_da_sam3,
+)
+
+
+SUPPORTED_MODEL_VARIANTS = ("da_sam3", "visual_da_sam3")
 
 
 @dataclass(frozen=True)
-class MonumentModelOutput:
+class DualAdapterSam3Output:
     logits: Tensor
     presence_logits: Tensor
     routing: tuple[tuple[Any, ...], ...]
     vision_forward_calls: int
 
 
-class MonumentDaSam3(nn.Module):
+class DualAdapterSam3(nn.Module):
     """Run frozen vision once and two fixed concept-conditioned SAM3 paths."""
+
+    model_variant = "da_sam3"
 
     def __init__(
         self,
@@ -35,10 +45,28 @@ class MonumentDaSam3(nn.Module):
     ) -> None:
         super().__init__()
         self.registry = registry
-        self.sam3, self.model_contract = build_official_da_sam3(checkpoint, device=device, rank=rank)
+        self.sam3, self.model_contract = self._build_official_model(
+            checkpoint,
+            device=device,
+            rank=rank,
+        )
+        contract_variant = self.model_contract.get("model_variant", self.model_variant)
+        if contract_variant != self.model_variant:
+            raise RuntimeError(
+                f"builder returned model_variant={contract_variant!r} for {self.model_variant!r}"
+            )
         self.prompts = canonical_prompt_texts(registry)
         self._vision_forward_calls = 0
         self._train_stage = "stage1"
+
+    def _build_official_model(
+        self,
+        checkpoint: str | Path,
+        *,
+        device: str | torch.device,
+        rank: int,
+    ) -> tuple[nn.Module, dict[str, Any]]:
+        return build_official_da_sam3(checkpoint, device=device, rank=rank)
 
     @property
     def adaptation_layers(self) -> tuple[nn.Module, ...]:
@@ -68,7 +96,7 @@ class MonumentDaSam3(nn.Module):
         self._train_stage = stage
         return tuple(name for name, parameter in self.named_parameters() if parameter.requires_grad)
 
-    def train(self, mode: bool = True) -> "MonumentDaSam3":
+    def train(self, mode: bool = True) -> "DualAdapterSam3":
         # Frozen SAM3 stays in eval mode so DAC/matcher/dropout are never activated.
         super().train(False)
         self.training = mode
@@ -105,7 +133,11 @@ class MonumentDaSam3(nn.Module):
                 result[key] = value
         return result
 
-    def forward(self, images: Tensor) -> MonumentModelOutput:
+    def _forward_vision(self, prepared: Tensor) -> dict[str, Tensor]:
+        with torch.no_grad():
+            return self.sam3.backbone.forward_image(prepared)
+
+    def forward(self, images: Tensor) -> DualAdapterSam3Output:
         if images.ndim != 4 or tuple(images.shape[1:]) != (3, 512, 512):
             raise ValueError(f"model input must be [B,3,512,512], got {tuple(images.shape)}")
         if not torch.isfinite(images).all():
@@ -113,8 +145,7 @@ class MonumentDaSam3(nn.Module):
         batch_size = images.shape[0]
         prepared = (images - 0.5) / 0.5
         before = self._vision_forward_calls
-        with torch.no_grad():
-            vision = self.sam3.backbone.forward_image(prepared)
+        vision = self._forward_vision(prepared)
         self._vision_forward_calls += 1
         text = self._encode_text_once(batch_size, images.device)
         logits, presence_logits, routing = [], [], []
@@ -144,7 +175,7 @@ class MonumentDaSam3(nn.Module):
         calls = self._vision_forward_calls - before
         if calls != 1:
             raise RuntimeError(f"vision encoder must run once per batch, observed {calls}")
-        return MonumentModelOutput(stacked, stacked_presence, tuple(routing), calls)
+        return DualAdapterSam3Output(stacked, stacked_presence, tuple(routing), calls)
 
     @staticmethod
     def _make_find_stage(batch_size: int, device: torch.device) -> Any:
@@ -160,3 +191,61 @@ class MonumentDaSam3(nn.Module):
             input_points=None,
             input_points_mask=None,
         )
+
+
+class VisualDualAdapterSam3(DualAdapterSam3):
+    """Hybrid shared Visual Adapter plus concept-conditioned DA-MoE variant."""
+
+    model_variant = "visual_da_sam3"
+
+    def _build_official_model(
+        self,
+        checkpoint: str | Path,
+        *,
+        device: str | torch.device,
+        rank: int,
+    ) -> tuple[nn.Module, dict[str, Any]]:
+        return build_official_visual_da_sam3(checkpoint, device=device, rank=rank)
+
+    @property
+    def visual_adapter(self) -> nn.Module:
+        trunk = self.sam3.backbone.vision_backbone.trunk
+        adapter = getattr(trunk, "visual_adapter", None)
+        if not isinstance(adapter, nn.Module):
+            raise RuntimeError("visual_da_sam3 was built without a Visual Adapter")
+        return adapter
+
+    def _forward_vision(self, prepared: Tensor) -> dict[str, Tensor]:
+        return self.sam3.backbone.forward_image(prepared)
+
+    def configure_stage(self, stage: str) -> tuple[str, ...]:
+        super().configure_stage(stage)
+        if stage == "stage1":
+            for parameter in self.visual_adapter.parameters():
+                parameter.requires_grad_(True)
+        return tuple(name for name, parameter in self.named_parameters() if parameter.requires_grad)
+
+    def train(self, mode: bool = True) -> "VisualDualAdapterSam3":
+        super().train(mode)
+        self.visual_adapter.train(bool(mode and self._train_stage == "stage1"))
+        return self
+
+
+def build_dual_adapter_model(
+    registry: ConceptRegistry,
+    *,
+    model_variant: str = "da_sam3",
+    checkpoint: str | Path = DEFAULT_CHECKPOINT,
+    device: str | torch.device = "cuda",
+    rank: int = 8,
+) -> DualAdapterSam3:
+    """Construct an explicitly selected model variant without checkpoint-name guessing."""
+
+    if model_variant == "da_sam3":
+        model_type: type[DualAdapterSam3] = DualAdapterSam3
+    elif model_variant == "visual_da_sam3":
+        model_type = VisualDualAdapterSam3
+    else:
+        choices = ", ".join(SUPPORTED_MODEL_VARIANTS)
+        raise ValueError(f"unsupported model variant {model_variant!r}; expected one of: {choices}")
+    return model_type(registry, checkpoint=checkpoint, device=device, rank=rank)

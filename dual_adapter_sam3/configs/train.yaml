@@ -1,4 +1,5 @@
 schema_version: 1
+model_variant: da_sam3
 seed: 42
 image_size: 512
 threshold: 0.5
@@ -25,6 +26,14 @@ optimizer:
   name: adamw
   weight_decay: 0.1
   gradient_clip: 1.0
+visual_adapter:
+  image_size: 512
+  patch_size: 14
+  depth: 32
+  stages: 4
+  embed_dim: 1024
+  bottleneck_dim: 32
+  high_pass_ratio: 0.25
 inference:
   tile_size: 512
   stride: 384

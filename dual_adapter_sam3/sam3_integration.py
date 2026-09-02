@@ -12,6 +12,12 @@ import torch
 from torch import Tensor, nn
 
 from .da_moe import DaMoeFfn
+from .visual_adapter import (
+    VisualAdapterConfig,
+    inject_visual_adapter,
+    install_grad_compatible_mlp_forward,
+    validate_official_vit_contract,
+)
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -154,10 +160,63 @@ def build_official_da_sam3(
     injected = inject_da_moe(model, rank=rank)
     model.eval()
     contract = {
+        "model_variant": "da_sam3",
         "implementation": "official facebookresearch/sam3 concept-conditioned image model",
         "checkpoint": str(checkpoint),
         "checkpoint_sha256": file_sha256(checkpoint),
         "retarget": retarget,
+        "fusion_layer_count": len(model.transformer.encoder.layers),
+        "moe_layer_indices": list(injected),
+        "experts": 4,
+        "top_k": 2,
+        "rank": rank,
+    }
+    return model, contract
+
+
+def build_official_visual_da_sam3(
+    checkpoint: str | Path = DEFAULT_CHECKPOINT,
+    *,
+    device: str | torch.device = "cuda",
+    rank: int = 8,
+    visual_config: VisualAdapterConfig | None = None,
+) -> tuple[nn.Module, dict[str, Any]]:
+    """Build the explicit hybrid Visual Adapter + DA-MoE SAM3 variant."""
+
+    activate_official_sam3()
+    from sam3.model_builder import build_sam3_image_model
+
+    checkpoint = Path(checkpoint).resolve()
+    if not checkpoint.is_file():
+        raise Sam3IntegrationError(f"missing official SAM3 checkpoint: {checkpoint}")
+    model = build_sam3_image_model(
+        checkpoint_path=str(checkpoint),
+        load_from_HF=False,
+        enable_segmentation=True,
+        eval_mode=True,
+        device=str(device),
+        compile=False,
+    )
+    for parameter in model.parameters():
+        parameter.requires_grad_(False)
+    retarget = retarget_vision_to_512(model)
+    trunk = model.backbone.vision_backbone.trunk
+    vit_contract = validate_official_vit_contract(trunk)
+    grad_mlp_blocks = install_grad_compatible_mlp_forward(trunk)
+    config = visual_config or VisualAdapterConfig()
+    visual_adapter = inject_visual_adapter(trunk, config)
+    injected = inject_da_moe(model, rank=rank)
+    model.eval()
+    contract = {
+        "model_variant": "visual_da_sam3",
+        "implementation": "official facebookresearch/sam3 concept-conditioned image model",
+        "checkpoint": str(checkpoint),
+        "checkpoint_sha256": file_sha256(checkpoint),
+        "retarget": retarget,
+        "vit": vit_contract,
+        "grad_compatible_mlp_blocks": list(grad_mlp_blocks),
+        "visual_adapter": visual_adapter.config.to_contract(),
+        "visual_adapter_blocks": list(range(config.depth)),
         "fusion_layer_count": len(model.transformer.encoder.layers),
         "moe_layer_indices": list(injected),
         "experts": 4,

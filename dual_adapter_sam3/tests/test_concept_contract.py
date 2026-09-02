@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from monument_da_sam3.concepts import (
+from dual_adapter_sam3.concepts import (
     CHANNEL_ORDER,
     ConceptContractError,
     canonical_prompt_texts,
