@@ -79,6 +79,15 @@ class _FakeSam3(nn.Module):
         self.transformer = nn.Module()
         self.transformer.encoder = nn.Module()
         self.transformer.encoder.layers = nn.ModuleList(layers)
+        self.segmentation_head = nn.Module()
+        self.segmentation_head.pixel_decoder = nn.Module()
+        self.segmentation_head.pixel_decoder.conv_layers = nn.ModuleList(
+            nn.Conv2d(1, 1, 3, padding=1) for _ in range(3)
+        )
+        self.segmentation_head.pixel_decoder.norms = nn.ModuleList(
+            nn.GroupNorm(1, 1) for _ in range(3)
+        )
+        self.segmentation_head.semantic_seg_head = nn.Conv2d(1, 1, 1)
         self.frozen_decoder_weight = nn.Parameter(torch.ones(()))
         self.grounding_calls = 0
 
@@ -205,3 +214,27 @@ def test_train_mode_keeps_official_sam3_eval_and_only_enables_stage_modules(regi
     visual.train(True)
     assert visual.sam3.training is False
     assert visual.visual_adapter.training is False
+
+
+def test_full_pixel_decoder_is_trainable_in_both_stages_and_recorded_in_contract(
+    registry,
+    fake_builders,
+) -> None:
+    visual = build_dual_adapter_model(
+        registry,
+        model_variant="visual_da_sam3",
+        device="cpu",
+        full_pixel_decoder=True,
+    )
+
+    stage1 = _trainable_names(visual, "stage1")
+    stage2 = _trainable_names(visual, "stage2")
+
+    for names in (stage1, stage2):
+        assert any("pixel_decoder.conv_layers.0" in name for name in names)
+        assert any("pixel_decoder.conv_layers.1" in name for name in names)
+        assert any("semantic_seg_head" in name for name in names)
+        assert not any("pixel_decoder.conv_layers.2" in name for name in names)
+    assert visual.model_contract["pixel_decoder_training"] == (
+        "all_effective_stages_and_semantic_head"
+    )

@@ -28,14 +28,19 @@ class _CheckpointLayer(nn.Module):
 
 
 class _CheckpointModel(nn.Module):
-    def __init__(self, model_variant: str) -> None:
+    def __init__(self, model_variant: str, *, full_pixel_decoder: bool = False) -> None:
         super().__init__()
         self.model_variant = model_variant
+        self.full_pixel_decoder = full_pixel_decoder
         self.model_contract = {
             "model_variant": model_variant,
             "checkpoint_sha256": "official-checkpoint",
             "rank": 8,
         }
+        if full_pixel_decoder:
+            self.model_contract["pixel_decoder_training"] = (
+                "all_effective_stages_and_semantic_head"
+            )
         self.sam3 = nn.Module()
         self.sam3.transformer = nn.Module()
         self.sam3.transformer.encoder = nn.Module()
@@ -50,6 +55,15 @@ class _CheckpointModel(nn.Module):
                 nn.GELU(),
                 nn.Linear(2, 2),
             )
+        self.sam3.segmentation_head = nn.Module()
+        self.sam3.segmentation_head.pixel_decoder = nn.Module()
+        self.sam3.segmentation_head.pixel_decoder.conv_layers = nn.ModuleList(
+            nn.Conv2d(2, 2, 3, padding=1) for _ in range(3)
+        )
+        self.sam3.segmentation_head.pixel_decoder.norms = nn.ModuleList(
+            nn.GroupNorm(1, 2) for _ in range(3)
+        )
+        self.sam3.segmentation_head.semantic_seg_head = nn.Conv2d(2, 1, 1)
         self.sam3.decoder_weight = nn.Parameter(torch.ones(2))
 
 
@@ -87,6 +101,18 @@ def test_adaptation_state_is_exactly_variant_specific() -> None:
     assert not any("visual_adapter" in key for key in legacy_keys)
     assert any("visual_adapter" in key for key in visual_keys)
     assert not any("base_ffn" in key or "base_weight" in key or "decoder_weight" in key for key in visual_keys)
+
+
+def test_full_decoder_checkpoint_state_adds_only_executed_decoder_and_semantic_head() -> None:
+    model = _CheckpointModel("visual_da_sam3", full_pixel_decoder=True)
+
+    keys = set(_adaptation_state(model))
+
+    assert any("pixel_decoder.conv_layers.0" in key for key in keys)
+    assert any("pixel_decoder.conv_layers.1" in key for key in keys)
+    assert any("semantic_seg_head" in key for key in keys)
+    assert not any("pixel_decoder.conv_layers.2" in key for key in keys)
+    assert not any("pixel_decoder.norms.2" in key for key in keys)
 
 
 @pytest.mark.parametrize("model_variant", ["da_sam3", "visual_da_sam3"])

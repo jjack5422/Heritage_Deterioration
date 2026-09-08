@@ -21,6 +21,8 @@ def test_evaluation_parser_defaults_to_legacy_and_accepts_visual() -> None:
     )
     with pytest.raises(SystemExit):
         build_parser().parse_args(["--model-variant", "unknown"])
+    assert build_parser().parse_args([]).full_pixel_decoder is False
+    assert build_parser().parse_args(["--full-pixel-decoder"]).full_pixel_decoder is True
 
 
 def _selected_record(path: Path, model_variant: str) -> dict[str, object]:
