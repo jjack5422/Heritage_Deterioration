@@ -1,4 +1,4 @@
-# 古蹟雙類劣化 DA-SAM3 Multi-label Segmentation 設計
+# Dual-Adapter SAM3 Multi-label Segmentation 設計
 
 ## 1. 文件目的
 
@@ -14,7 +14,7 @@ Specialization 套用到兩類古蹟劣化：
 不輸入 prompt；系統從版本化 concept registry 自動載入兩個固定英文
 prompts，輸出兩張獨立 probability maps 與 binary masks。
 
-第一版只建立獨立的 `monument_da_sam3/` 研究專案，不修改既有
+第一版只建立獨立的 `dual_adapter_sam3/` 研究專案，不修改既有
 `sam3_adapter/` 單類、prompt-free 實驗合約。
 
 ## 2. 已鎖定範圍
@@ -50,7 +50,7 @@ Macro-F1 baseline。額外 baselines 與 ablations 等主方法確認可學習�
 新專案位於：
 
 ```text
-monument_da_sam3/
+dual_adapter_sam3/
 ├── README.md
 ├── __init__.py
 ├── concepts.py
@@ -290,15 +290,30 @@ Expert 身分不與類別硬綁定。專家可自然學習細線、網狀紋理�
 每類只在自己的 `valid_masks` 上計算 segmentation loss：
 
 ```text
-L_class = L_masked_dice + L_masked_focal + 0.1 * L_presence
+L_class = L_masked_dice + L_masked_weighted_focal + 0.1 * L_presence
 L_seg   = (L_crack_craquelure + L_loss) / 2
 ```
 
 Presence target 為該 tile 是否具有該類 valid positive pixels。Presence BCE 與 masked
-focal 對 batch 內所有 samples 的 valid pixels 計算。Masked Dice 只對該類具有至少
+weighted focal 對 batch 內所有 samples 的 valid pixels 計算。Masked Dice 只對該類具有至少
 一個 valid positive pixel 的 samples 取平均；若整個 batch 都沒有該類 positive，
 該 Dice term 以保留計算圖的零值回傳。Negative-only tiles 因此由 focal 與 presence
 loss 學習，不會因 empty-target Dice 產生 NaN 或任意獎勵。
+
+為延續既有 SAM2-Adapter 與 SAM3-Adapter binary runs 的懲罰方向，兩個類別都固定使用
+`background:positive = 1:2`。實作不得依賴定義容易混淆的 focal `alpha` 參數，而是先
+逐像素計算：
+
+```text
+weighted_bce = BCEWithLogits(logit, target, pos_weight=2.0, reduction=none)
+p_t          = sigmoid(logit)       if target=1 else 1-sigmoid(logit)
+focal        = (1-p_t)^2 * weighted_bce
+```
+
+只對 valid pixels 取算術平均，分母為 valid pixel 數而不是 class-weight sum。故在預測
+難度相同時，positive pixel 的基礎 BCE 懲罰與梯度係數是 background 的兩倍；focal
+modulation 再依每個像素的難度調整。`gamma=2.0`、`pos_weight=2.0` 都是固定合約，
+不得由 validation 或 outer-test 搜尋。Dice 本身不另加 class weight。
 
 完整 loss：
 
@@ -455,7 +470,8 @@ Macro-F1 = (F1_crack_craquelure + F1_loss) / 2
 背景不納入 Macro-F1。每 fold 報告：
 
 - 每類 Precision、Recall、F1、IoU；
-- macro Precision、Recall、F1、IoU；
+- 每類 Accuracy；
+- macro Precision、Recall、F1、IoU、Accuracy；
 - validation/outer-test segmentation loss；
 - 每 image、每 source group metrics；
 - 5-fold mean、standard deviation、best/worst fold、range；
@@ -466,13 +482,17 @@ Macro-F1 = (F1_crack_craquelure + F1_loss) / 2
 既不算 TP/TN，也不算 FP/FN。現有 GT 沒有可信 overlap annotations，因此第一版
 不得宣稱 overlap segmentation accuracy。
 
+每類 Accuracy 定義為 `(TP + TN) / (TP + TN + FP + FN)`，只使用該類 valid pixels；
+標準 `metrics/accuracy` tag 是兩類 Accuracy 的算術平均。它是 reporting contract 指標，
+不取代 primary Macro-F1，也不參與 checkpoint selection。
+
 ## 14. Training output reporting
 
 實際修改訓練 loop、啟動 artifact-producing evaluation 或訓練時，必須先讀取並
 遵守 repository 指定的 `training-output-reporting` skill。Run layout：
 
 ```text
-monument_da_sam3/runs/<experiment_id>/
+dual_adapter_sam3/runs/<experiment_id>/
 ├── info/
 │   ├── experiment.json
 │   ├── dataset_contract.json
@@ -535,6 +555,7 @@ metrics/f1
 metrics/precision
 metrics/recall
 metrics/iou
+metrics/accuracy
 optimizer/lr
 ```
 
@@ -560,7 +581,7 @@ macro-ranked combined review。所有 TensorBoard PNG、CSV/JSON 與 HTML 都由
 正式介面：
 
 ```bash
-python -m monument_da_sam3.infer \
+python -m dual_adapter_sam3.infer \
   --checkpoint <stage2_best.pt> \
   --input <image-or-folder> \
   --output-dir <directory>

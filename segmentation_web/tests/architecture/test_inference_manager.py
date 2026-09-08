@@ -44,6 +44,26 @@ class FailingAdapter(RecordingAdapter):
         raise RuntimeError("checkpoint rejected")
 
 
+class ClassRecordingAdapter(RecordingAdapter):
+    def predict(
+        self,
+        image: Image.Image,
+        threshold: float = 0.5,
+        deterioration_class: str | None = None,
+    ) -> dict:
+        self.tracker.setdefault("classes", []).append(deterioration_class)
+        return super().predict(image, threshold)
+
+
+class RuntimeRecordingAdapter(RecordingAdapter):
+    def prepare_runtime(self) -> None:
+        self.tracker.setdefault("events", []).append("prepare")
+
+    def load(self, weight_path: Path | None) -> None:
+        self.tracker.setdefault("events", []).append("load")
+        super().load(weight_path)
+
+
 def _resolver(model_id: str, weight_name: str, model_root: Path) -> Path:
     return model_root / model_id / weight_name
 
@@ -65,6 +85,47 @@ def test_repeated_model_and_weight_reuses_cached_adapter(tmp_path: Path) -> None
     assert first["mask"].mode == "L"
     assert second["model"] == "alpha"
     assert second["weight"] == "one.pth"
+
+
+def test_switching_deterioration_class_reuses_same_loaded_model(tmp_path: Path) -> None:
+    tracker: dict = {}
+    manager = InferenceManager(
+        model_root=tmp_path,
+        adapter_factories={"da_sam3": lambda: ClassRecordingAdapter(tracker)},
+        weight_resolver=_resolver,
+    )
+    image = Image.new("RGB", (8, 6), "white")
+
+    crack = manager.predict(
+        "da_sam3",
+        "stage2_best.pt",
+        image,
+        deterioration_class="crack_craquelure",
+    )
+    loss = manager.predict(
+        "da_sam3",
+        "stage2_best.pt",
+        image,
+        deterioration_class="loss",
+    )
+
+    assert tracker["loads"] == 1
+    assert tracker["classes"] == ["crack_craquelure", "loss"]
+    assert crack["deterioration_class"] == "crack_craquelure"
+    assert loss["deterioration_class"] == "loss"
+
+
+def test_runtime_is_prepared_before_adapter_load(tmp_path: Path) -> None:
+    tracker: dict = {}
+    manager = InferenceManager(
+        model_root=tmp_path,
+        adapter_factories={"alpha": lambda: RuntimeRecordingAdapter(tracker)},
+        weight_resolver=_resolver,
+    )
+
+    manager.predict("alpha", "one.pth", Image.new("RGB", (4, 4)))
+
+    assert tracker["events"] == ["prepare", "load"]
 
 
 def test_model_switch_unloads_previous_adapter(tmp_path: Path) -> None:

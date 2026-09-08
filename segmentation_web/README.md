@@ -1,14 +1,17 @@
 # Segmentation Inference Web
 
 A small, maintainable segmentation inference service for an NVIDIA GPU server.
-It serves four trained crack-segmentation architectures plus a CPU-only dummy
+It serves five trained deterioration-segmentation architectures plus a CPU-only dummy
 model through one Flask API and Gradio interface.
 
 ## Available models
 
 - Dummy Segmentation is fully operational without a checkpoint or GPU.
-- SAM2 Adapter, SAM3 Adapter, ResUNet50, and ConvNeXt-Large U-Net load their
-  real `fold0/best.pt` or `fold0/last.pt` task checkpoints on the RTX 5090.
+- SAM2 Adapter, SAM3 Adapter, DA-SAM3, ResUNet50, and ConvNeXt-Large U-Net load
+  their real Fold 0 task checkpoints on the RTX 5090.
+- DA-SAM3 defaults to the full-PixelDecoder `visual_da_sam3`
+  `stage2_best.pt` checkpoint and lets the user select either `裂縫／龜裂` or
+  `缺失` without reloading the model.
 - Arbitrary-size images use shared 512×512 sliding windows, Gaussian overlap
   blending, and original-size mask reconstruction.
 - Uploaded images are processed in memory and are not permanently stored.
@@ -31,7 +34,7 @@ ngrok HTTPS tunnel -> Gradio UI :7860
              Inference Manager + one-request lock
                            |
                            v
-       Dummy / SAM2 / SAM3 / ResUNet / ConvNeXt adapter
+     Dummy / SAM2 / SAM3 / DA-SAM3 / ResUNet / ConvNeXt adapter
                            |
                            v
                     CPU or RTX 5090
@@ -56,9 +59,11 @@ segmentation_web/
 │   ├── base.py
 │   ├── checkpoint_loading.py
 │   ├── convnext_unet.py
+│   ├── da_sam3.py
 │   ├── dummy.py
 │   ├── sam2_adapter.py
 │   ├── sam3_adapter.py
+│   ├── sam3_runtime.py
 │   ├── tiled_inference.py
 │   ├── unet_adapter.py
 │   └── resunet.py
@@ -123,6 +128,7 @@ SAM2_BASE_CHECKPOINT=segment-anything-2/checkpoints/sam2.1_hiera_large.pt
 SAM3_BASE_CHECKPOINT=segment-anything-3/checkpoints/sam3.pt
 SAM2_ADAPTER_WEIGHT_ROOT=sam2_adapter/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
 SAM3_ADAPTER_WEIGHT_ROOT=sam3_adapter/runs/<experiment>/5fold/sam3_adapter/fold0/artifacts/checkpoints
+DA_SAM3_WEIGHT_ROOT=dual_adapter_sam3/runs/<experiment>/5fold/visual_da_sam3/fold0/artifacts/checkpoints
 RESUNET50_WEIGHT_ROOT=unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
 CONVNEXT_UNET_WEIGHT_ROOT=unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
 INFERENCE_TILE_SIZE=512
@@ -172,6 +178,9 @@ runs:
 
 - SAM2 Adapter: `2026-08-22_merged-crack_0820-splits_bg1-fg2_sam2-adapter-hiera-large_seed42`
 - SAM3 Adapter: `2026-08-28_sam3-adapter-512_seed42`
+- DA-SAM3: `2026-09-04_visual-da-sam3-full-decoder-joint-512_seed42`, Fold 0
+  `stage2_best.pt` (the deployed model variant is `visual_da_sam3`; all
+  effective PixelDecoder stages and the semantic head are loaded)
 - ResUNet50: `2026-08-22_merged-crack_0820-splits_bg1-fg2_resunet50_seed42`
 - ConvNeXt-Large: `2026-08-22_merged-crack_0820-splits_bg1-fg2_convnext-large_seed42`
 
@@ -186,6 +195,12 @@ that escape the directory are rejected.
 
 Dummy Segmentation always exposes the virtual `built-in` weight and never reads
 a checkpoint.
+
+The legacy SAM3 Adapter vendor runtime and the official SAM3 runtime both use
+the top-level Python package name `sam3`. Before either SAM3 model is loaded,
+the inference manager activates its matching runtime and removes only the
+conflicting `sam3.*`/vendor `models.*` module cache. This permits switching
+between SAM3 Adapter and DA-SAM3 while retaining the one-model GPU cache.
 
 ## Start Flask
 
@@ -226,7 +241,9 @@ http://127.0.0.1:7860
 When developing over VS Code Remote SSH, forward remote port `7860` and open
 `http://localhost:7860` on the local computer. The UI loads models and weights
 from Flask, submits the image as multipart form data, and decodes the returned
-Base64 PNG mask and overlay.
+Base64 PNG mask and overlay. Selecting DA-SAM3 reveals the required
+`劣化類別` field; the API accepts `deterioration_class=crack_craquelure` or
+`deterioration_class=loss` and returns only that class's binary mask.
 
 ## Access from another computer on the same network
 

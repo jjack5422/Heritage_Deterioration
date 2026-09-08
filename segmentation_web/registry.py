@@ -10,6 +10,10 @@ from config import settings
 
 ALLOWED_CHECKPOINT_EXTENSIONS = frozenset({".pth", ".pt", ".ckpt"})
 BUILT_IN_WEIGHT = "built-in"
+DA_SAM3_CLASSES = (
+    {"id": "crack_craquelure", "label": "裂縫／龜裂"},
+    {"id": "loss", "label": "缺失"},
+)
 
 MODELS: dict[str, dict[str, Any]] = {
     "dummy": {
@@ -26,6 +30,13 @@ MODELS: dict[str, dict[str, Any]] = {
         "label": "SAM3 Adapter",
         "weights_subdir": "sam3_adapter",
         "adapter": "sam3_adapter",
+    },
+    "da_sam3": {
+        "label": "DA-SAM3",
+        "weights_subdir": "da_sam3",
+        "adapter": "da_sam3",
+        "preferred_weight": "stage2_best.pt",
+        "deterioration_classes": DA_SAM3_CLASSES,
     },
     "resunet50": {
         "label": "ResUNet50",
@@ -75,13 +86,45 @@ def _model_dir(
     return (root / subdir).resolve()
 
 
-def get_models() -> list[dict[str, str]]:
+def get_models() -> list[dict[str, Any]]:
     """Return public identifiers and labels for all registered models."""
 
-    return [
-        {"id": model_id, "label": definition["label"]}
-        for model_id, definition in MODELS.items()
-    ]
+    models: list[dict[str, Any]] = []
+    for model_id, definition in MODELS.items():
+        model = {"id": model_id, "label": definition["label"]}
+        classes = definition.get("deterioration_classes")
+        if classes:
+            model["deterioration_classes"] = [dict(item) for item in classes]
+        models.append(model)
+    return models
+
+
+def get_deterioration_classes(model_id: str) -> tuple[dict[str, str], ...]:
+    """Return the fixed selectable classes for a model, if it has any."""
+
+    classes = _model(model_id).get("deterioration_classes", ())
+    return tuple(dict(item) for item in classes)
+
+
+def resolve_deterioration_class(
+    model_id: str,
+    deterioration_class: str | None,
+) -> str | None:
+    """Validate a model-dependent deterioration-class selection."""
+
+    classes = get_deterioration_classes(model_id)
+    if not classes:
+        if deterioration_class:
+            raise RegistryError(
+                "Deterioration class is not supported for selected model"
+            )
+        return None
+    if not deterioration_class:
+        raise RegistryError("Deterioration class is required for DA-SAM3")
+    allowed = {item["id"] for item in classes}
+    if deterioration_class not in allowed:
+        raise RegistryError("Invalid deterioration class")
+    return deterioration_class
 
 
 def get_weights(
@@ -117,7 +160,11 @@ def get_weights(
             continue
         if resolved.is_file():
             weights.append(candidate.name)
-    return sorted(weights, key=str.casefold)
+    preferred = definition.get("preferred_weight")
+    return sorted(
+        weights,
+        key=lambda name: (name != preferred, name.casefold()),
+    )
 
 
 def get_weight_path(

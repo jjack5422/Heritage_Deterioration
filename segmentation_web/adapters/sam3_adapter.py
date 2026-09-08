@@ -13,6 +13,7 @@ from adapters.checkpoint_loading import (
     validate_sam3_checkpoint,
     verify_base_checkpoint,
 )
+from adapters.sam3_runtime import activate_vendor_runtime
 from config import Settings, settings as default_settings
 
 
@@ -34,6 +35,9 @@ class SAM3Adapter(TiledTorchAdapter):
         )
         self.base_checkpoint = app_settings.sam3_base_checkpoint
         self.input_size = app_settings.sam3_input_size
+
+    def prepare_runtime(self) -> None:
+        activate_vendor_runtime()
 
     def load(self, weight_path: Path | None) -> None:
         if weight_path is None:

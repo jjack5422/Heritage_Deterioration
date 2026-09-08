@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from typing import Literal
 
 import numpy as np
 import torch
@@ -11,6 +12,7 @@ from torch import Tensor
 
 
 PredictBatch = Callable[[Tensor], Tensor]
+TileNormalization = Literal["imagenet", "zero_one"]
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
@@ -40,8 +42,15 @@ def _gaussian_window(tile_size: int, sigma_ratio: float = 0.125) -> np.ndarray:
     return window
 
 
-def _normalized_tile(tile: np.ndarray) -> Tensor:
+def _normalized_tile(
+    tile: np.ndarray,
+    normalization: TileNormalization = "imagenet",
+) -> Tensor:
     tensor = torch.from_numpy(tile.copy()).permute(2, 0, 1).float().div_(255.0)
+    if normalization == "zero_one":
+        return tensor
+    if normalization != "imagenet":
+        raise ValueError(f"unsupported tile normalization: {normalization}")
     mean = tensor.new_tensor(IMAGENET_MEAN).view(3, 1, 1)
     std = tensor.new_tensor(IMAGENET_STD).view(3, 1, 1)
     return (tensor - mean) / std
@@ -55,6 +64,7 @@ def tiled_foreground_probability(
     tile_size: int = 512,
     stride: int = 384,
     batch_size: int = 1,
+    normalization: TileNormalization = "imagenet",
 ) -> tuple[np.ndarray, int]:
     """Infer and blend a foreground probability map at the original size."""
 
@@ -87,7 +97,8 @@ def tiled_foreground_probability(
         batch = torch.stack(
             [
                 _normalized_tile(
-                    padded[y : y + tile_size, x : x + tile_size]
+                    padded[y : y + tile_size, x : x + tile_size],
+                    normalization,
                 )
                 for y, x in batch_positions
             ]

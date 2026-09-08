@@ -1,0 +1,21 @@
+schema_version: 1
+prompt_set_id: monument_deterioration_v1
+concepts:
+  crack_craquelure:
+    canonical_prompt: craquelure, a network of fine cracks in the painted surface
+    aliases:
+      - crack in painted surface
+      - surface crack
+      - fine cracks in paint
+      - network of fine cracks
+    raw_labels: [1]
+  loss:
+    canonical_prompt: paint loss, a missing area in the paint layer that exposes the substrate
+    aliases:
+      - paint loss
+      - missing paint
+      - paint layer loss
+      - missing paint area
+      - exposed substrate
+      - lacuna in painting
+    raw_labels: [2]

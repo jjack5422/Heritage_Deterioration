@@ -23,6 +23,11 @@ DEFAULT_SAM3_ADAPTER_WEIGHT_ROOT = WORKSPACE_ROOT / (
     "sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42/"
     "5fold/sam3_adapter/fold0/artifacts/checkpoints"
 )
+DEFAULT_DA_SAM3_WEIGHT_ROOT = WORKSPACE_ROOT / (
+    "dual_adapter_sam3/runs/"
+    "2026-09-04_visual-da-sam3-full-decoder-joint-512_seed42/"
+    "5fold/visual_da_sam3/fold0/artifacts/checkpoints"
+)
 DEFAULT_RESUNET50_WEIGHT_ROOT = WORKSPACE_ROOT / (
     "unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_"
     "resunet50_seed42/5fold/foreground/fold0/artifacts/checkpoints"
@@ -93,6 +98,7 @@ class Settings:
     sam3_base_checkpoint: Path | None = None
     sam2_adapter_weight_root: Path | None = None
     sam3_adapter_weight_root: Path | None = None
+    da_sam3_weight_root: Path | None = None
     resunet50_weight_root: Path | None = None
     convnext_unet_weight_root: Path | None = None
     inference_tile_size: int = 512
@@ -115,6 +121,7 @@ class Settings:
         candidates = {
             "sam2_adapter": self.sam2_adapter_weight_root,
             "sam3_adapter": self.sam3_adapter_weight_root,
+            "da_sam3": self.da_sam3_weight_root,
             "resunet50": self.resunet50_weight_root,
             "convnext_unet": self.convnext_unet_weight_root,
         }
@@ -184,6 +191,9 @@ def load_settings() -> Settings:
         ),
         sam3_adapter_weight_root=_configured_path(
             "SAM3_ADAPTER_WEIGHT_ROOT", DEFAULT_SAM3_ADAPTER_WEIGHT_ROOT
+        ),
+        da_sam3_weight_root=_configured_path(
+            "DA_SAM3_WEIGHT_ROOT", DEFAULT_DA_SAM3_WEIGHT_ROOT
         ),
         resunet50_weight_root=_configured_path(
             "RESUNET50_WEIGHT_ROOT", DEFAULT_RESUNET50_WEIGHT_ROOT
