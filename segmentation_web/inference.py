@@ -15,6 +15,7 @@ from PIL import Image
 
 from adapters import (
     ConvNextUnetAdapter,
+    DASAM3Adapter,
     DummyAdapter,
     ResUNetAdapter,
     SAM2Adapter,
@@ -68,6 +69,7 @@ class InferenceManager:
             "dummy": DummyAdapter,
             "sam2_adapter": lambda: SAM2Adapter(settings=app_settings),
             "sam3_adapter": lambda: SAM3Adapter(settings=app_settings),
+            "da_sam3": lambda: DASAM3Adapter(settings=app_settings),
             "resunet50": lambda: ResUNetAdapter(settings=app_settings),
             "convnext_unet": lambda: ConvNextUnetAdapter(settings=app_settings),
         }
@@ -123,6 +125,7 @@ class InferenceManager:
         adapter = factory()
         LOGGER.info("Loading model model=%s weight=%s", model_id, weight_name)
         try:
+            adapter.prepare_runtime()
             adapter.load(weight_path)
         except Exception:
             adapter.unload()
@@ -140,6 +143,7 @@ class InferenceManager:
         weight_name: str,
         image: Image.Image,
         threshold: float = 0.5,
+        deterioration_class: str | None = None,
     ) -> dict[str, Any]:
         """Load or reuse an adapter and return normalized inference outputs."""
 
@@ -149,14 +153,22 @@ class InferenceManager:
         with self._inference_lock:
             started = time.perf_counter()
             LOGGER.info(
-                "Inference start model=%s weight=%s threshold=%.2f",
+                "Inference start model=%s weight=%s class=%s threshold=%.2f",
                 model_id,
                 weight_name,
+                deterioration_class,
                 threshold,
             )
             adapter = self._load_adapter(model_id, weight_name)
             with torch.inference_mode():
-                prediction = adapter.predict(image.convert("RGB"), threshold)
+                if deterioration_class is None:
+                    prediction = adapter.predict(image.convert("RGB"), threshold)
+                else:
+                    prediction = adapter.predict(
+                        image.convert("RGB"),
+                        threshold,
+                        deterioration_class=deterioration_class,
+                    )
             latency_ms = (time.perf_counter() - started) * 1000
             mask = binary_mask_to_pil(prediction["mask"])
             overlay = prediction["overlay"].convert("RGB")
@@ -174,6 +186,7 @@ class InferenceManager:
                 "latency_ms": latency_ms,
                 "model": model_id,
                 "weight": weight_name,
+                "deterioration_class": deterioration_class,
                 "device": device,
                 "metadata": prediction.get("metadata", {}),
             }

@@ -140,6 +140,40 @@ def test_api_client_posts_multipart_image_and_decodes_outputs() -> None:
     assert "image" in kwargs["files"]
 
 
+def test_api_client_sends_da_sam3_class_and_displays_its_chinese_label() -> None:
+    session = FakeSession(
+        [
+            FakeResponse(
+                {
+                    "status": "success",
+                    "model": "da_sam3",
+                    "weight": "stage2_best.pt",
+                    "deterioration_class": "crack_craquelure",
+                    "threshold": 0.5,
+                    "device": "cuda",
+                    "latency_ms": 8.2,
+                    "mask_png_base64": _png_base64("black"),
+                    "overlay_png_base64": _png_base64("red"),
+                }
+            )
+        ]
+    )
+    client = InferenceApiClient("http://127.0.0.1:5000", session=session)
+
+    result = client.infer(
+        Image.new("RGB", (4, 3), "white"),
+        "da_sam3",
+        "stage2_best.pt",
+        0.5,
+        "crack_craquelure",
+    )
+
+    assert session.calls[0][2]["data"]["deterioration_class"] == (
+        "crack_craquelure"
+    )
+    assert "劣化類別：裂縫／龜裂" in result["metadata"]
+
+
 def test_gradio_blocks_build_without_contacting_flask() -> None:
     session = FakeSession([])
     client = InferenceApiClient("http://127.0.0.1:5000", session=session)
@@ -258,6 +292,10 @@ def test_ui_scopes_dropdown_and_slider_reset_styles() -> None:
 
     assert "model-dropdown" in config
     assert "weight-dropdown" in config
+    assert "deterioration-dropdown" in config
+    assert "劣化類別" in config
+    assert "裂縫／龜裂" in config
+    assert "缺失" in config
     assert "threshold-slider" in config
     assert "#precision-lab #threshold-slider .reset-button" in PRECISION_LAB_CSS
 

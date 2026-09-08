@@ -22,11 +22,18 @@ class DummyAdapter(SegmentationAdapter):
             raise ValueError("Dummy adapter does not accept a checkpoint")
         self.loaded = True
 
-    def predict(self, image: Image.Image, threshold: float = 0.5) -> dict:
+    def predict(
+        self,
+        image: Image.Image,
+        threshold: float = 0.5,
+        deterioration_class: str | None = None,
+    ) -> dict:
         if not self.loaded:
             raise RuntimeError("Dummy adapter is not loaded")
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("Threshold must be between 0.0 and 1.0")
+        if deterioration_class is not None:
+            raise ValueError("Dummy adapter does not support deterioration classes")
 
         source = image.convert("RGB")
         grayscale = np.asarray(source.convert("L"), dtype=np.uint8)

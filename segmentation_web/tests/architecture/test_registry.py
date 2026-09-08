@@ -4,23 +4,48 @@ import pytest
 
 from registry import (
     InvalidWeightError,
+    RegistryError,
     UnknownModelError,
+    get_deterioration_classes,
     get_models,
     get_weight_path,
     get_weights,
+    resolve_deterioration_class,
 )
 
 
-def test_get_models_lists_dummy_and_four_real_models() -> None:
+def test_get_models_lists_dummy_and_five_real_models() -> None:
     models = get_models()
 
     assert models == [
         {"id": "dummy", "label": "Dummy Segmentation"},
         {"id": "sam2_adapter", "label": "SAM2 Adapter"},
         {"id": "sam3_adapter", "label": "SAM3 Adapter"},
+        {
+            "id": "da_sam3",
+            "label": "DA-SAM3",
+            "deterioration_classes": [
+                {"id": "crack_craquelure", "label": "裂縫／龜裂"},
+                {"id": "loss", "label": "缺失"},
+            ],
+        },
         {"id": "resunet50", "label": "ResUNet50"},
         {"id": "convnext_unet", "label": "ConvNeXt-Large U-Net"},
     ]
+
+
+def test_da_sam3_exposes_and_validates_fixed_deterioration_classes() -> None:
+    assert get_deterioration_classes("da_sam3") == (
+        {"id": "crack_craquelure", "label": "裂縫／龜裂"},
+        {"id": "loss", "label": "缺失"},
+    )
+    assert resolve_deterioration_class("da_sam3", "loss") == "loss"
+    with pytest.raises(RegistryError, match="required"):
+        resolve_deterioration_class("da_sam3", None)
+    with pytest.raises(RegistryError, match="Invalid"):
+        resolve_deterioration_class("da_sam3", "other")
+    with pytest.raises(RegistryError, match="not supported"):
+        resolve_deterioration_class("dummy", "loss")
 
 
 def test_get_weights_filters_and_sorts_compatible_checkpoints(tmp_path: Path) -> None:
@@ -53,6 +78,19 @@ def test_model_specific_weight_root_can_use_completed_run_directory(
         "best.pt",
         weight_roots={"sam3_adapter": checkpoint_root},
     ) == (checkpoint_root / "best.pt").resolve()
+
+
+def test_da_sam3_prefers_stage2_best_checkpoint(tmp_path: Path) -> None:
+    checkpoint_root = tmp_path / "da_sam3"
+    checkpoint_root.mkdir()
+    for name in ("stage1_best.pt", "stage2_last.pt", "stage2_best.pt"):
+        (checkpoint_root / name).write_bytes(b"checkpoint")
+
+    assert get_weights("da_sam3", model_root=tmp_path) == [
+        "stage2_best.pt",
+        "stage1_best.pt",
+        "stage2_last.pt",
+    ]
 
 
 def test_dummy_uses_virtual_built_in_weight(tmp_path: Path) -> None:

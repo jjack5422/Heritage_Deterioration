@@ -33,7 +33,13 @@ if str(WORKSPACE_ROOT) not in sys.path:
 
 
 from inference import InferenceManager, device_information
-from registry import InvalidWeightError, UnknownModelError, get_models, get_weights
+from registry import (
+    InvalidWeightError,
+    UnknownModelError,
+    get_models,
+    get_weights,
+    resolve_deterioration_class,
+)
 from request_security import SlidingWindowRateLimiter
 
 
@@ -125,6 +131,9 @@ def create_app(
         image_upload = request.files.get("image")
         model_id = request.form.get("model", "").strip()
         weight_name = request.form.get("weight", "").strip()
+        deterioration_class = (
+            request.form.get("deterioration_class", "").strip() or None
+        )
         if image_upload is None:
             return _error("Image is required", 400)
         if not model_id:
@@ -134,19 +143,30 @@ def create_app(
 
         try:
             threshold = _threshold(request.form.get("threshold"))
+            deterioration_class = resolve_deterioration_class(
+                model_id,
+                deterioration_class,
+            )
             image = validate_image(
                 image_upload.stream,
                 max_pixels=app_settings.max_image_pixels,
                 max_side=app_settings.max_image_side,
             )
             LOGGER.info(
-                "Inference request model=%s weight=%s size=%sx%s",
+                "Inference request model=%s weight=%s class=%s size=%sx%s",
                 model_id,
                 weight_name,
+                deterioration_class,
                 image.width,
                 image.height,
             )
-            result = manager.predict(model_id, weight_name, image, threshold)
+            result = manager.predict(
+                model_id,
+                weight_name,
+                image,
+                threshold,
+                deterioration_class=deterioration_class,
+            )
         except ImageTooLargeError:
             return _error("Image dimensions too large", 413)
         except InvalidImageError:
@@ -171,6 +191,7 @@ def create_app(
             "status": "success",
             "model": result["model"],
             "weight": result["weight"],
+            "deterioration_class": result["deterioration_class"],
             "threshold": threshold,
             "latency_ms": round(float(result["latency_ms"]), 3),
             "device": result["device"],

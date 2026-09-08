@@ -90,3 +90,93 @@ def test_real_models_load_switch_and_infer_through_web_contract() -> None:
     print(f"real_model_summary={json.dumps(observations, sort_keys=True)}", flush=True)
     manager.unload()
     torch.cuda.empty_cache()
+
+
+@pytest.mark.skipif(
+    not RUN_REAL_MODELS,
+    reason="set RUN_REAL_MODEL_TESTS=1 to load multi-gigabyte GPU models",
+)
+def test_real_da_sam3_infers_both_classes_with_one_cached_model() -> None:
+    if not torch.cuda.is_available():
+        pytest.fail("RUN_REAL_MODEL_TESTS=1 requires CUDA")
+    settings = load_settings()
+    manager = InferenceManager(runtime_settings=settings)
+    image = Image.open(REPRESENTATIVE_IMAGE).convert("RGB")
+    observations: dict[str, dict[str, object]] = {}
+
+    try:
+        torch.cuda.reset_peak_memory_stats()
+        for deterioration_class in ("crack_craquelure", "loss"):
+            result = manager.predict(
+                "da_sam3",
+                "stage2_best.pt",
+                image,
+                threshold=0.5,
+                deterioration_class=deterioration_class,
+            )
+            mask = np.asarray(result["mask"])
+            metadata = result["metadata"]
+            assert result["mask"].size == image.size
+            assert result["overlay"].size == image.size
+            assert set(np.unique(mask)).issubset({0, 255})
+            assert math.isfinite(float(metadata["probability_min"]))
+            assert math.isfinite(float(metadata["probability_max"]))
+            assert metadata["model_variant"] == "visual_da_sam3"
+            assert metadata["full_pixel_decoder"] is True
+            assert metadata["deterioration_class"] == deterioration_class
+            assert manager.cached_key == ("da_sam3", "stage2_best.pt")
+            observations[deterioration_class] = {
+                "latency_ms": result["latency_ms"],
+                "foreground_pixels": int((mask > 0).sum()),
+                "probability_min": float(metadata["probability_min"]),
+                "probability_max": float(metadata["probability_max"]),
+            }
+        observations["peak_allocated_mib"] = {
+            "value": torch.cuda.max_memory_allocated() / 1024**2
+        }
+        print(
+            f"real_da_sam3_summary={json.dumps(observations, sort_keys=True)}",
+            flush=True,
+        )
+    finally:
+        manager.unload()
+        torch.cuda.empty_cache()
+
+
+@pytest.mark.skipif(
+    not RUN_REAL_MODELS,
+    reason="set RUN_REAL_MODEL_TESTS=1 to load multi-gigabyte GPU models",
+)
+def test_real_sam3_runtimes_switch_in_both_directions() -> None:
+    if not torch.cuda.is_available():
+        pytest.fail("RUN_REAL_MODEL_TESTS=1 requires CUDA")
+    settings = load_settings()
+    manager = InferenceManager(runtime_settings=settings)
+    image = Image.open(REPRESENTATIVE_IMAGE).convert("RGB")
+    cases = (
+        ("da_sam3", "stage2_best.pt", "crack_craquelure"),
+        ("sam3_adapter", "best.pt", None),
+        ("da_sam3", "stage2_best.pt", "loss"),
+    )
+
+    try:
+        for model_id, weight, deterioration_class in cases:
+            result = manager.predict(
+                model_id,
+                weight,
+                image,
+                threshold=0.5,
+                deterioration_class=deterioration_class,
+            )
+            mask = np.asarray(result["mask"])
+            assert result["mask"].size == image.size
+            assert result["overlay"].size == image.size
+            assert set(np.unique(mask)).issubset({0, 255})
+            print(
+                f"runtime_switch_success model={model_id} "
+                f"class={deterioration_class} latency_ms={result['latency_ms']:.1f}",
+                flush=True,
+            )
+    finally:
+        manager.unload()
+        torch.cuda.empty_cache()

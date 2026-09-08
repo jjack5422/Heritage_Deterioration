@@ -9,6 +9,37 @@ from config import Settings
 from inference import InferenceManager
 
 
+class _RecordingInferenceManager:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def predict(
+        self,
+        model_id,
+        weight_name,
+        image,
+        threshold,
+        deterioration_class=None,
+    ):
+        self.calls.append(
+            {
+                "model": model_id,
+                "weight": weight_name,
+                "deterioration_class": deterioration_class,
+            }
+        )
+        mask = Image.new("L", image.size, 0)
+        return {
+            "mask": mask,
+            "overlay": image.copy(),
+            "latency_ms": 1.0,
+            "model": model_id,
+            "weight": weight_name,
+            "deterioration_class": deterioration_class,
+            "device": "cpu",
+        }
+
+
 def _settings(
     model_root: Path,
     max_upload_mb: int = 10,
@@ -100,6 +131,65 @@ def test_dummy_inference_returns_pngs_and_metadata(tmp_path: Path) -> None:
     assert body["latency_ms"] >= 0
     assert base64.b64decode(body["mask_png_base64"]).startswith(b"\x89PNG")
     assert base64.b64decode(body["overlay_png_base64"]).startswith(b"\x89PNG")
+
+
+def test_da_sam3_inference_requires_and_forwards_selected_class(
+    tmp_path: Path,
+) -> None:
+    settings = _settings(tmp_path)
+    manager = _RecordingInferenceManager()
+    app = create_app(settings=settings, inference_manager=manager)
+    app.config.update(TESTING=True)
+    client = app.test_client()
+
+    missing = client.post(
+        "/api/infer",
+        data={
+            "image": (_png_file(), "input.png"),
+            "model": "da_sam3",
+            "weight": "stage2_best.pt",
+            "threshold": "0.5",
+        },
+        content_type="multipart/form-data",
+    )
+    invalid = client.post(
+        "/api/infer",
+        data={
+            "image": (_png_file(), "input.png"),
+            "model": "da_sam3",
+            "weight": "stage2_best.pt",
+            "threshold": "0.5",
+            "deterioration_class": "other",
+        },
+        content_type="multipart/form-data",
+    )
+    accepted = client.post(
+        "/api/infer",
+        data={
+            "image": (_png_file(), "input.png"),
+            "model": "da_sam3",
+            "weight": "stage2_best.pt",
+            "threshold": "0.5",
+            "deterioration_class": "loss",
+        },
+        content_type="multipart/form-data",
+    )
+
+    assert missing.status_code == 400
+    assert missing.get_json()["error"] == (
+        "Deterioration class is required for DA-SAM3"
+    )
+    assert invalid.status_code == 400
+    assert invalid.get_json()["error"] == "Invalid deterioration class"
+    assert accepted.status_code == 200
+    assert accepted.get_json()["deterioration_class"] == "loss"
+    assert manager.calls == [
+        {
+            "model": "da_sam3",
+            "weight": "stage2_best.pt",
+            "deterioration_class": "loss",
+        }
+    ]
 
 
 def test_inference_rejects_invalid_inputs(tmp_path: Path) -> None:

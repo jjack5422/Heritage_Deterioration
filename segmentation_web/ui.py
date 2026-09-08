@@ -21,6 +21,7 @@ from imaging.image_processing import (
     base64_png_to_pil,
     configure_image_decompression_limit,
 )
+from registry import get_deterioration_classes
 
 
 LOGGER = logging.getLogger(__name__)
@@ -30,8 +31,18 @@ MODEL_LABELS_ZH = {
     "dummy": "測試分割模型（Dummy）",
     "sam2_adapter": "SAM2 Adapter 分割模型",
     "sam3_adapter": "SAM3 Adapter 分割模型",
+    "da_sam3": "DA-SAM3",
     "resunet50": "ResUNet50 分割模型",
     "convnext_unet": "ConvNeXt-Large U-Net 分割模型",
+}
+
+DA_SAM3_MODEL_ID = "da_sam3"
+DA_SAM3_CLASS_CHOICES = tuple(
+    (item["label"], item["id"])
+    for item in get_deterioration_classes(DA_SAM3_MODEL_ID)
+)
+DETERIORATION_CLASS_LABELS = {
+    class_id: label for label, class_id in DA_SAM3_CLASS_CHOICES
 }
 
 API_ERROR_MESSAGES_ZH = {
@@ -42,6 +53,11 @@ API_ERROR_MESSAGES_ZH = {
     "Weight is required": "找不到可用的模型權重",
     "Invalid image": "圖片格式無效，請上傳 JPEG、PNG 或 WEBP 圖片",
     "Invalid threshold": "遮罩閾值必須介於 0.00 到 1.00 之間",
+    "Deterioration class is required for DA-SAM3": "請選擇劣化類別",
+    "Invalid deterioration class": "劣化類別無效，請重新選擇",
+    "Deterioration class is not supported for selected model": (
+        "所選模型不支援指定的劣化類別"
+    ),
     "Inference failed": "推論失敗，請稍後再試",
     "Unauthorized": "推論服務驗證失敗，請重新啟動私人展示服務",
     "Rate limit exceeded": "推論次數已達上限，請稍後再試",
@@ -565,6 +581,7 @@ class InferenceApiClient:
         model_id: str,
         weight_name: str,
         threshold: float,
+        deterioration_class: str | None = None,
     ) -> dict[str, Any]:
         if image is None:
             raise ApiClientError("請先上傳圖片")
@@ -572,18 +589,25 @@ class InferenceApiClient:
             raise ApiClientError("請選擇模型")
         if not weight_name:
             raise ApiClientError("找不到相容的模型權重")
+        if model_id == DA_SAM3_MODEL_ID and deterioration_class not in {
+            class_id for _label, class_id in DA_SAM3_CLASS_CHOICES
+        }:
+            raise ApiClientError("請選擇劣化類別")
 
         buffer = io.BytesIO()
         image.convert("RGB").save(buffer, format="PNG")
+        form_data = {
+            "model": model_id,
+            "weight": weight_name,
+            "threshold": str(float(threshold)),
+        }
+        if deterioration_class is not None:
+            form_data["deterioration_class"] = deterioration_class
         try:
             response = self.session.post(
                 f"{self.base_url}/api/infer",
                 files={"image": ("upload.png", buffer.getvalue(), "image/png")},
-                data={
-                    "model": model_id,
-                    "weight": weight_name,
-                    "threshold": str(float(threshold)),
-                },
+                data=form_data,
                 timeout=self.timeout_seconds,
                 headers=self._headers(),
             )
@@ -596,13 +620,25 @@ class InferenceApiClient:
         try:
             mask = base64_png_to_pil(str(payload["mask_png_base64"])).convert("L")
             overlay = base64_png_to_pil(str(payload["overlay_png_base64"]))
-            metadata = (
-                f"模型：{payload['model']}\n"
-                f"模型權重：{payload['weight']}\n"
-                f"遮罩閾值：{float(payload['threshold']):.2f}\n"
-                f"執行裝置：{payload['device']}\n"
-                f"推論時間：{float(payload['latency_ms']):.1f} 毫秒"
+            metadata_lines = [
+                f"模型：{payload['model']}",
+                f"模型權重：{payload['weight']}",
+            ]
+            selected_class = payload.get("deterioration_class")
+            if selected_class is not None:
+                class_label = DETERIORATION_CLASS_LABELS.get(
+                    str(selected_class),
+                    str(selected_class),
+                )
+                metadata_lines.append(f"劣化類別：{class_label}")
+            metadata_lines.extend(
+                [
+                    f"遮罩閾值：{float(payload['threshold']):.2f}",
+                    f"執行裝置：{payload['device']}",
+                    f"推論時間：{float(payload['latency_ms']):.1f} 毫秒",
+                ]
             )
+            metadata = "\n".join(metadata_lines)
         except (KeyError, TypeError, ValueError) as exc:
             raise ApiClientError("Flask API 回傳的推論資料不完整") from exc
         return {"mask": mask, "overlay": overlay, "metadata": metadata}
@@ -633,6 +669,7 @@ def create_ui(
             selected = choices[0][1] if choices else None
             weights = client.get_weights(selected) if selected else []
             selected_weight = weights[0] if weights else None
+            class_enabled = selected == DA_SAM3_MODEL_ID
             try:
                 health = client.get_health()
             except ApiClientError:
@@ -640,18 +677,31 @@ def create_ui(
             return (
                 gr.Dropdown(choices=choices, value=selected),
                 gr.Dropdown(choices=weights, value=selected_weight),
+                gr.Dropdown(
+                    choices=DA_SAM3_CLASS_CHOICES,
+                    value=(DA_SAM3_CLASS_CHOICES[0][1] if class_enabled else None),
+                    visible=class_enabled,
+                    interactive=class_enabled,
+                ),
                 format_service_status(health),
             )
         except (ApiClientError, KeyError) as exc:
             raise gr.Error(str(exc)) from exc
 
-    def load_weights(model_id: str):
+    def load_model_settings(model_id: str):
         try:
             weights = client.get_weights(model_id)
+            class_enabled = model_id == DA_SAM3_MODEL_ID
+            class_dropdown = gr.Dropdown(
+                choices=DA_SAM3_CLASS_CHOICES,
+                value=(DA_SAM3_CLASS_CHOICES[0][1] if class_enabled else None),
+                visible=class_enabled,
+                interactive=class_enabled,
+            )
             if not weights:
                 gr.Warning("找不到相容的模型權重")
-                return gr.Dropdown(choices=[], value=None)
-            return gr.Dropdown(choices=weights, value=weights[0])
+                return gr.Dropdown(choices=[], value=None), class_dropdown
+            return gr.Dropdown(choices=weights, value=weights[0]), class_dropdown
         except ApiClientError as exc:
             raise gr.Error(str(exc)) from exc
 
@@ -659,6 +709,7 @@ def create_ui(
         image: Image.Image | None,
         model_id: str | None,
         weight_name: str | None,
+        deterioration_class: str | None,
         threshold: float,
     ):
         try:
@@ -669,6 +720,7 @@ def create_ui(
                 model_id or "",
                 weight_name or "",
                 threshold,
+                deterioration_class,
             )
             return image.convert("RGB"), result["mask"], result["overlay"], result[
                 "metadata"
@@ -740,6 +792,16 @@ def create_ui(
                         elem_id="weight-dropdown",
                         elem_classes=["lab-dropdown"],
                     )
+                deterioration_dropdown = gr.Dropdown(
+                    choices=DA_SAM3_CLASS_CHOICES,
+                    value=None,
+                    label="劣化類別",
+                    info="DA-SAM3 可分別輸出裂縫／龜裂或缺失遮罩",
+                    visible=False,
+                    interactive=False,
+                    elem_id="deterioration-dropdown",
+                    elem_classes=["lab-dropdown"],
+                )
                 threshold_slider = gr.Slider(
                     minimum=0.0,
                     maximum=1.0,
@@ -803,14 +865,19 @@ def create_ui(
 
         demo.load(
             fn=load_models,
-            outputs=[model_dropdown, weight_dropdown, service_status],
+            outputs=[
+                model_dropdown,
+                weight_dropdown,
+                deterioration_dropdown,
+                service_status,
+            ],
             queue=False,
             api_visibility="private",
         )
         model_dropdown.change(
-            fn=load_weights,
+            fn=load_model_settings,
             inputs=model_dropdown,
-            outputs=weight_dropdown,
+            outputs=[weight_dropdown, deterioration_dropdown],
             queue=False,
             show_progress="minimal",
             api_visibility="private",
@@ -821,6 +888,7 @@ def create_ui(
                 input_image,
                 model_dropdown,
                 weight_dropdown,
+                deterioration_dropdown,
                 threshold_slider,
             ],
             outputs=[
