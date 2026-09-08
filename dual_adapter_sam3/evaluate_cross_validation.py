@@ -23,7 +23,7 @@ from sam2_adapter.reporting import binary_metric_row
 from .class_report import build_class_report
 from .concepts import CHANNEL_ORDER, load_concept_registry
 from .data import MonumentDeteriorationDataset
-from .metrics import MultilabelConfusion
+from .metrics import BoundaryConfusion, MultilabelConfusion
 from .model import SUPPORTED_MODEL_VARIANTS, DualAdapterSam3, build_dual_adapter_model
 from .reporting import RunLayout, save_concept_qualitative, write_json, write_validation_rows
 from .sam3_integration import DEFAULT_CHECKPOINT, file_sha256
@@ -83,6 +83,9 @@ def _checkpoint_record(path: Path) -> dict[str, Any]:
         "prompt_contract_sha256": checkpoint["prompt_contract_sha256"],
         "split_contract_sha256": checkpoint["split_contract_sha256"],
         "model_variant": _checkpoint_model_variant(checkpoint),
+        "selection_criterion": checkpoint.get(
+            "selection_criterion", "minimum validation segmentation loss"
+        ),
     }
 
 
@@ -145,6 +148,7 @@ def _metrics_from_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "f1": ratio(2 * tp, 2 * tp + fp + fn),
             "iou": ratio(tp, tp + fp + fn),
             "accuracy": ratio(tp + tn, tp + fp + fn + tn),
+            "predicted_to_gt_pixel_ratio": ratio(tp + fp, tp + fn),
             **totals,
         }
     macro = {
@@ -172,11 +176,17 @@ def evaluate_stage(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     model.eval()
     rows: list[dict[str, Any]] = []
+    boundary = BoundaryConfusion.empty(device=device, tolerance=2)
     for raw_batch in loader:
         batch = _to_device(raw_batch, device)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             output = model(batch["image"])
         predictions = output.logits.sigmoid() >= 0.5
+        boundary.update(
+            predictions[:, 0],
+            batch["targets"][:, 0],
+            batch["valid_masks"][:, 0],
+        )
         for sample_index, image_id in enumerate(batch["image_id"]):
             source_group = str(batch["source_group"][sample_index])
             for concept_index, concept in enumerate(CHANNEL_ORDER):
@@ -193,6 +203,7 @@ def evaluate_stage(
                 })
                 rows.append(row)
     metrics = _metrics_from_rows(rows)
+    metrics["boundary"] = {"crack_craquelure": boundary.compute()}
     metrics["per_source_group"] = _source_group_metrics(rows)
     metrics["image_concept_rows"] = len(rows)
     return rows, metrics
@@ -266,6 +277,7 @@ def build_cross_validation_summary(
     fold_results: list[dict[str, Any]],
     *,
     model_variant: str = "da_sam3",
+    full_pixel_decoder: bool = False,
 ) -> dict[str, Any]:
     if model_variant not in SUPPORTED_MODEL_VARIANTS:
         raise ValueError(f"unsupported model variant: {model_variant!r}")
@@ -287,6 +299,20 @@ def build_cross_validation_summary(
                 metric: _mean_std([float(result[stage]["per_class"][concept][metric]) for result in fold_results])
                 for metric in ("precision", "recall", "f1", "iou", "accuracy")
             }
+            stage_summary["per_class"][concept]["predicted_to_gt_pixel_ratio"] = _mean_std([
+                float(result[stage]["per_class"][concept].get("predicted_to_gt_pixel_ratio", 0.0))
+                for result in fold_results
+            ])
+        if all("boundary" in result[stage] for result in fold_results):
+            stage_summary["boundary"] = {
+                "crack_craquelure": {
+                    metric: _mean_std([
+                        float(result[stage]["boundary"]["crack_craquelure"][metric])
+                        for result in fold_results
+                    ])
+                    for metric in ("precision", "recall", "f1")
+                }
+            }
         stages[stage] = stage_summary
     paired = {
         metric: {
@@ -303,7 +329,12 @@ def build_cross_validation_summary(
         "schema_version": 1,
         "model_variant": model_variant,
         "fold_count": 5,
-        "primary_metric": "stage2 macro foreground F1, arithmetic mean across folds",
+        "primary_metric": (
+            "stage2 craquelure region F1 plus 2-pixel Boundary F1 under the "
+            "validation-constrained joint checkpoint; arithmetic means across folds"
+            if full_pixel_decoder
+            else "stage2 macro foreground F1, arithmetic mean across folds"
+        ),
         "standard_deviation": "sample standard deviation (N-1)",
         "stages": stages,
         "stage2_minus_stage1": paired,
@@ -328,18 +359,21 @@ def build_cross_validation_summary(
                     writer.writerow({"fold": result["fold"], "stage": stage, "target": target, **{key: values[key] for key in fields[3:]}})
     stage2_macro = stages["stage2"]["macro"]
     table_rows = "".join(
-        "<tr>" + f"<td>{result['fold']}</td>" + "".join(
-            f"<td>{float(result['stage2']['macro'][metric]):.4f}</td>"
-            for metric in ("precision", "recall", "f1", "iou", "accuracy")
-        ) + f'<td><a href="../5fold/{model_variant}/fold{result["fold"]}/reports/index.html">Fold report</a></td></tr>'
+        "<tr>"
+        + f"<td>{result['fold']}</td>"
+        + f"<td>{float(result['stage2']['per_class']['crack_craquelure']['f1']):.4f}</td>"
+        + f"<td>{float(result['stage2'].get('boundary', {}).get('crack_craquelure', {}).get('f1', 0.0)):.4f}</td>"
+        + f"<td>{float(result['stage2']['per_class']['loss']['f1']):.4f}</td>"
+        + f"<td>{float(result['stage2']['macro']['f1']):.4f}</td>"
+        + f'<td><a href="../5fold/{model_variant}/fold{result["fold"]}/reports/index.html">Fold report</a></td></tr>'
         for result in fold_results
     )
     html = f"""<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Dual-Adapter SAM3 five-fold report</title>
 <style>body{{font-family:system-ui,sans-serif;max-width:1100px;margin:auto;padding:24px;color:#17202a}}table{{border-collapse:collapse;width:100%}}th,td{{border:1px solid #ccd;padding:8px;text-align:right}}th:first-child,td:first-child{{text-align:left}}code{{background:#eef;padding:2px 5px}}</style></head><body>
 <h1>{model_variant} 512 five-fold outer-test report</h1>
-<p>Primary Stage2 Macro-F1: <strong>{stage2_macro['f1']['mean']:.4f} ± {stage2_macro['f1']['std_sample']:.4f}</strong> (sample SD).</p>
+<p>Stage2 Craquelure F1: <strong>{stages['stage2']['per_class']['crack_craquelure']['f1']['mean']:.4f} ± {stages['stage2']['per_class']['crack_craquelure']['f1']['std_sample']:.4f}</strong>; 2px Boundary F1: <strong>{stages['stage2'].get('boundary', {}).get('crack_craquelure', {}).get('f1', {}).get('mean', 0.0):.4f}</strong>; Loss F1: <strong>{stages['stage2']['per_class']['loss']['f1']['mean']:.4f}</strong>.</p>
 <p>Outer-test was excluded from checkpoint, prompt, threshold, and hyperparameter selection. Threshold is fixed at 0.5.</p>
-<table><thead><tr><th>Fold</th><th>Precision</th><th>Recall</th><th>Macro-F1</th><th>IoU</th><th>Accuracy</th><th>Artifacts</th></tr></thead><tbody>{table_rows}</tbody></table>
+<table><thead><tr><th>Fold</th><th>Craquelure F1</th><th>Boundary F1</th><th>Loss F1</th><th>Macro-F1</th><th>Artifacts</th></tr></thead><tbody>{table_rows}</tbody></table>
 <h2>Stage2 five-fold summary</h2><pre>{json.dumps(stage2_macro, ensure_ascii=False, indent=2)}</pre>
 <h2>Stage2 − Stage1 paired differences</h2><pre>{json.dumps(paired, ensure_ascii=False, indent=2)}</pre>
 <p>Limitation: the original class-index masks cannot validate overlapping crack/craquelure and loss at the same pixel.</p>
@@ -376,6 +410,7 @@ def run(args: argparse.Namespace) -> Path:
             model_variant=args.model_variant,
             checkpoint=args.checkpoint,
             device=device,
+            full_pixel_decoder=args.full_pixel_decoder,
         ).to(device)
         stage_rows: list[dict[str, Any]] = []
         stage_metrics: dict[str, Any] = {}
@@ -392,7 +427,7 @@ def run(args: argparse.Namespace) -> Path:
             "model_variant": args.model_variant,
             "selected_epoch": selected_epoch,
             "selected_checkpoint_sha256": fold_record["stage2"]["sha256"],
-            "selection_source": "stage2 minimum validation segmentation loss",
+            "selection_source": fold_record["stage2"]["selection_criterion"],
             "outer_test_excluded_from_selection": True,
             "threshold": 0.5,
             "stage1": stage_metrics["stage1"],
@@ -412,6 +447,7 @@ def run(args: argparse.Namespace) -> Path:
         experiment_root,
         fold_results,
         model_variant=args.model_variant,
+        full_pixel_decoder=args.full_pixel_decoder,
     )
     print(json.dumps({"status": "complete", "report": str(experiment_root / "reports" / "cross_validation.html")}, ensure_ascii=False), flush=True)
     return experiment_root
@@ -431,6 +467,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--full-pixel-decoder", action="store_true")
     return parser
 
 

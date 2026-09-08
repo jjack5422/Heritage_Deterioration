@@ -11,6 +11,7 @@ import torch.nn.functional as F
 from torch import Tensor, nn
 
 from .concepts import CHANNEL_ORDER, ConceptRegistry, canonical_prompt_texts
+from .decoder_training import enable_full_pixel_decoder, set_full_pixel_decoder_train_mode
 from .sam3_integration import (
     DEFAULT_CHECKPOINT,
     MOE_LAYER_INDICES,
@@ -42,6 +43,7 @@ class DualAdapterSam3(nn.Module):
         checkpoint: str | Path = DEFAULT_CHECKPOINT,
         device: str | torch.device = "cuda",
         rank: int = 8,
+        full_pixel_decoder: bool = False,
     ) -> None:
         super().__init__()
         self.registry = registry
@@ -56,6 +58,12 @@ class DualAdapterSam3(nn.Module):
                 f"builder returned model_variant={contract_variant!r} for {self.model_variant!r}"
             )
         self.prompts = canonical_prompt_texts(registry)
+        self.full_pixel_decoder = bool(full_pixel_decoder)
+        if self.full_pixel_decoder:
+            self.model_contract = {
+                **self.model_contract,
+                "pixel_decoder_training": "all_effective_stages_and_semantic_head",
+            }
         self._vision_forward_calls = 0
         self._train_stage = "stage1"
 
@@ -93,6 +101,8 @@ class DualAdapterSam3(nn.Module):
                 for norm in (layer.norm1, layer.norm2, layer.norm3):
                     for parameter in norm.parameters():
                         parameter.requires_grad_(True)
+        if self.full_pixel_decoder:
+            enable_full_pixel_decoder(self)
         self._train_stage = stage
         return tuple(name for name, parameter in self.named_parameters() if parameter.requires_grad)
 
@@ -107,6 +117,8 @@ class DualAdapterSam3(nn.Module):
                     layer.norm1.train(True)
                     layer.norm2.train(True)
                     layer.norm3.train(True)
+            if self.full_pixel_decoder:
+                set_full_pixel_decoder_train_mode(self, True)
         return self
 
     def _encode_text_once(self, batch_size: int, device: torch.device) -> dict[str, Tensor]:
@@ -238,6 +250,7 @@ def build_dual_adapter_model(
     checkpoint: str | Path = DEFAULT_CHECKPOINT,
     device: str | torch.device = "cuda",
     rank: int = 8,
+    full_pixel_decoder: bool = False,
 ) -> DualAdapterSam3:
     """Construct an explicitly selected model variant without checkpoint-name guessing."""
 
@@ -248,4 +261,10 @@ def build_dual_adapter_model(
     else:
         choices = ", ".join(SUPPORTED_MODEL_VARIANTS)
         raise ValueError(f"unsupported model variant {model_variant!r}; expected one of: {choices}")
-    return model_type(registry, checkpoint=checkpoint, device=device, rank=rank)
+    return model_type(
+        registry,
+        checkpoint=checkpoint,
+        device=device,
+        rank=rank,
+        full_pixel_decoder=full_pixel_decoder,
+    )

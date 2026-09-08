@@ -6,6 +6,7 @@ import argparse
 import csv
 import json
 import platform
+import shutil
 import subprocess
 import time
 from dataclasses import asdict
@@ -18,10 +19,22 @@ from torch import Tensor
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
+from .checkpoints import (
+    adaptation_state as _adaptation_state,
+    checkpoint_model_variant as _checkpoint_model_variant,
+    expected_adaptation_keys as _expected_adaptation_keys,
+    load_adaptation_checkpoint as _load_adaptation,
+)
+from .checkpoint_selection import (
+    LOSS_F1_TOLERANCE,
+    ValidationCandidate,
+    select_constrained_joint,
+    update_pareto_front,
+)
 from .concepts import CHANNEL_ORDER, concept_contract_record, load_concept_registry
 from .data import MonumentDeteriorationDataset
-from .losses import LossOutput, multilabel_objective
-from .metrics import MultilabelConfusion
+from .losses import LossOutput, hybrid_multilabel_objective, multilabel_objective
+from .metrics import BoundaryConfusion, MultilabelConfusion
 from .model import (
     SUPPORTED_MODEL_VARIANTS,
     DualAdapterSam3,
@@ -121,8 +134,20 @@ def _routing_terms(output: DualAdapterSam3Output) -> list[tuple[Tensor, Tensor, 
     ]
 
 
-def _objective(output: DualAdapterSam3Output, batch: dict[str, Any]) -> LossOutput:
-    return multilabel_objective(
+def _objective(
+    output: DualAdapterSam3Output,
+    batch: dict[str, Any],
+    *,
+    craquelure_loss: str = "original",
+) -> LossOutput:
+    objective = (
+        multilabel_objective
+        if craquelure_loss == "original"
+        else hybrid_multilabel_objective
+    )
+    if craquelure_loss not in ("original", "sam2_bce_dice"):
+        raise ValueError(f"unsupported craquelure loss profile: {craquelure_loss}")
+    return objective(
         output.logits,
         output.presence_logits,
         batch["targets"],
@@ -173,6 +198,7 @@ def _run_train_epoch(
     *,
     epoch: int,
     stage: str,
+    craquelure_loss: str = "original",
 ) -> tuple[float, list[dict[str, Any]]]:
     model.train(True)
     optimizer.zero_grad(set_to_none=True)
@@ -184,7 +210,7 @@ def _run_train_epoch(
         batch = _to_device(raw_batch, device)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             output = model(batch["image"])
-            loss = _objective(output, batch)
+            loss = _objective(output, batch, craquelure_loss=craquelure_loss)
         loss.total.backward()
         if first_batch:
             assert_finite_gradients(model)
@@ -200,53 +226,32 @@ def _run_train_epoch(
 
 
 @torch.no_grad()
-def _run_validation(model: DualAdapterSam3, loader: DataLoader, device: torch.device) -> tuple[float, dict[str, Any]]:
+def _run_validation(
+    model: DualAdapterSam3,
+    loader: DataLoader,
+    device: torch.device,
+    *,
+    craquelure_loss: str = "original",
+) -> tuple[float, dict[str, Any]]:
     model.eval()
     confusion = MultilabelConfusion.empty(device=device)
+    boundary = BoundaryConfusion.empty(device=device, tolerance=2)
     segmentation_total = 0.0
     count = 0
     for raw_batch in loader:
         batch = _to_device(raw_batch, device)
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             output = model(batch["image"])
-            loss = _objective(output, batch)
+            loss = _objective(output, batch, craquelure_loss=craquelure_loss)
         size = int(batch["image"].shape[0])
         segmentation_total += float(loss.segmentation) * size
         count += size
         confusion.update(output.logits, batch["targets"], batch["valid_masks"])
-    return segmentation_total / count, confusion.compute()
-
-
-def _adaptation_state(model: DualAdapterSam3) -> dict[str, Tensor]:
-    expected = _expected_adaptation_keys(model)
-    named = dict(model.named_parameters())
-    return {name: named[name].detach().cpu() for name in expected}
-
-
-def _is_adaptation_parameter(name: str, *, model_variant: str) -> bool:
-    is_expert = ".da_moe.experts." in name
-    is_router = ".da_moe.router." in name
-    is_fusion_norm = ".transformer.encoder.layers." in name and any(
-        f".{norm}." in name for norm in ("norm1", "norm2", "norm3")
-    )
-    is_visual_adapter = ".visual_adapter." in name and model_variant == "visual_da_sam3"
-    return is_expert or is_router or is_fusion_norm or is_visual_adapter
-
-
-def _expected_adaptation_keys(model: DualAdapterSam3) -> tuple[str, ...]:
-    model_variant = str(model.model_variant)
-    if model_variant not in ("da_sam3", "visual_da_sam3"):
-        raise RuntimeError(f"unsupported model variant for adaptation state: {model_variant!r}")
-    keys = tuple(
-        name
-        for name, _parameter in model.named_parameters()
-        if _is_adaptation_parameter(name, model_variant=model_variant)
-    )
-    if not keys:
-        raise RuntimeError(f"{model_variant} model exposes no adaptation parameters")
-    if model_variant == "visual_da_sam3" and not any(".visual_adapter." in name for name in keys):
-        raise RuntimeError("visual_da_sam3 model exposes no Visual Adapter parameters")
-    return keys
+        predictions = output.logits[:, 0].sigmoid() >= 0.5
+        boundary.update(predictions, batch["targets"][:, 0], batch["valid_masks"][:, 0])
+    metrics = confusion.compute()
+    metrics["boundary"] = {"crack_craquelure": boundary.compute()}
+    return segmentation_total / count, metrics
 
 
 def _save_checkpoint(
@@ -260,6 +265,8 @@ def _save_checkpoint(
     split_hash: str,
     optimizer: torch.optim.Optimizer,
     scheduler: torch.optim.lr_scheduler.LRScheduler,
+    validation_metrics: Mapping[str, Any] | None = None,
+    selection_criterion: str = "minimum validation segmentation loss",
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     torch.save({
@@ -268,6 +275,8 @@ def _save_checkpoint(
         "stage": stage,
         "epoch": epoch,
         "validation_segmentation_loss": validation_segmentation_loss,
+        "validation_metrics": dict(validation_metrics or {}),
+        "selection_criterion": selection_criterion,
         "adaptation_state": _adaptation_state(model),
         "optimizer": optimizer.state_dict(),
         "scheduler": scheduler.state_dict(),
@@ -277,109 +286,129 @@ def _save_checkpoint(
     }, path)
 
 
-def _checkpoint_model_variant(checkpoint: Mapping[str, Any]) -> str:
-    schema_version = int(checkpoint.get("schema_version", -1))
-    if schema_version == 1:
-        variant = str(checkpoint.get("model_variant", "da_sam3"))
-        if variant != "da_sam3":
-            raise RuntimeError(f"schema 1 checkpoint cannot declare model variant {variant!r}")
-        return variant
-    if schema_version == 2:
-        if "model_variant" not in checkpoint:
-            raise RuntimeError("schema 2 checkpoint is missing model_variant")
-        variant = str(checkpoint["model_variant"])
-        if variant not in ("da_sam3", "visual_da_sam3"):
-            raise RuntimeError(f"schema 2 checkpoint has unsupported model variant {variant!r}")
-        return variant
-    raise RuntimeError(f"unsupported adaptation checkpoint schema version: {schema_version}")
-
-
-def _normalized_checkpoint_model_contract(
-    checkpoint: Mapping[str, Any],
+def _validation_candidate(
+    path: Path,
     *,
-    checkpoint_variant: str,
-) -> dict[str, Any]:
-    raw = checkpoint.get("model_contract")
-    if not isinstance(raw, Mapping):
-        raise RuntimeError("checkpoint model contract is missing or malformed")
-    contract = dict(raw)
-    if int(checkpoint["schema_version"]) == 1 and checkpoint_variant == "da_sam3":
-        contract.setdefault("model_variant", "da_sam3")
-    return contract
+    stage: str,
+    epoch: int,
+    metrics: Mapping[str, Any],
+) -> ValidationCandidate:
+    per_class = metrics["per_class"]
+    boundary = metrics["boundary"]["crack_craquelure"]
+    return ValidationCandidate(
+        path=path,
+        stage=stage,
+        epoch=epoch,
+        craquelure_f1=float(per_class["crack_craquelure"]["f1"]),
+        boundary_f1=float(boundary["f1"]),
+        loss_f1=float(per_class["loss"]["f1"]),
+    )
 
 
-def _validate_checkpoint_contract(
-    checkpoint: Mapping[str, Any],
+def _update_checkpoint_front(
+    candidates: tuple[ValidationCandidate, ...],
+    *,
+    layout: RunLayout,
     model: DualAdapterSam3,
-    *,
-    expected_prompt_hash: str,
-    expected_split_hash: str,
-) -> dict[str, Tensor]:
-    checkpoint_variant = _checkpoint_model_variant(checkpoint)
-    requested_variant = str(model.model_variant)
-    if checkpoint_variant != requested_variant:
-        raise RuntimeError(
-            f"checkpoint model variant {checkpoint_variant!r} does not match requested "
-            f"model variant {requested_variant!r}"
-        )
-    if checkpoint.get("prompt_contract_sha256") != expected_prompt_hash:
-        raise RuntimeError("checkpoint prompt contract mismatch")
-    if checkpoint.get("split_contract_sha256") != expected_split_hash:
-        raise RuntimeError("checkpoint split contract mismatch")
-    saved_contract = _normalized_checkpoint_model_contract(
-        checkpoint,
-        checkpoint_variant=checkpoint_variant,
+    stage: str,
+    epoch: int,
+    validation_loss: float,
+    metrics: Mapping[str, Any],
+    registry_hash: str,
+    split_hash: str,
+    optimizer: torch.optim.Optimizer,
+    scheduler: torch.optim.lr_scheduler.LRScheduler,
+) -> tuple[ValidationCandidate, ...]:
+    candidate_path = layout.checkpoints / f"{stage}_candidates" / f"epoch_{epoch:03d}.pt"
+    candidate = _validation_candidate(
+        candidate_path,
+        stage=stage,
+        epoch=epoch,
+        metrics=metrics,
     )
-    if saved_contract != model.model_contract:
-        raise RuntimeError("checkpoint model contract mismatch")
-
-    raw_state = checkpoint.get("adaptation_state")
-    if not isinstance(raw_state, Mapping):
-        raise RuntimeError("checkpoint adaptation state is missing or malformed")
-    state = dict(raw_state)
-    expected_keys = set(_expected_adaptation_keys(model))
-    actual_keys = set(state)
-    missing = sorted(expected_keys - actual_keys)
-    unexpected = sorted(actual_keys - expected_keys)
-    if missing or unexpected:
-        raise RuntimeError(
-            f"adaptation state keys mismatch: missing={missing}, unexpected={unexpected}"
-        )
-
-    named_parameters = dict(model.named_parameters())
-    for name in sorted(expected_keys):
-        tensor = state[name]
-        if not isinstance(tensor, Tensor):
-            raise RuntimeError(f"adaptation state {name!r} is not a tensor")
-        parameter = named_parameters[name]
-        if tuple(tensor.shape) != tuple(parameter.shape):
-            raise RuntimeError(
-                f"adaptation state shape mismatch for {name}: "
-                f"checkpoint={tuple(tensor.shape)} model={tuple(parameter.shape)}"
-            )
-        if tensor.dtype != parameter.dtype:
-            raise RuntimeError(
-                f"adaptation state dtype mismatch for {name}: "
-                f"checkpoint={tensor.dtype} model={parameter.dtype}"
-            )
-        if not torch.isfinite(tensor).all():
-            raise FloatingPointError(f"adaptation state contains non-finite tensor: {name}")
-    return state
-
-
-def _load_adaptation(path: Path, model: DualAdapterSam3, *, expected_prompt_hash: str, expected_split_hash: str) -> dict[str, Any]:
-    checkpoint = torch.load(path, map_location="cpu", weights_only=True)
-    state = _validate_checkpoint_contract(
-        checkpoint,
+    updated, removed, accepted = update_pareto_front(candidates, candidate)
+    if not accepted:
+        return candidates
+    _save_checkpoint(
+        candidate_path,
         model,
-        expected_prompt_hash=expected_prompt_hash,
-        expected_split_hash=expected_split_hash,
+        stage=stage,
+        epoch=epoch,
+        validation_segmentation_loss=validation_loss,
+        registry_hash=registry_hash,
+        split_hash=split_hash,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        validation_metrics=metrics,
+        selection_criterion=(
+            "maximize 0.5*craquelure_F1 + 0.5*craquelure_boundary_F1 subject "
+            f"to loss_F1 >= best_loss_F1 - {LOSS_F1_TOLERANCE}"
+        ),
     )
-    incompatible = model.load_state_dict(state, strict=False)
-    unexpected = list(incompatible.unexpected_keys)
-    if unexpected:
-        raise RuntimeError(f"unexpected adaptation checkpoint keys: {unexpected}")
-    return checkpoint
+    for obsolete in removed:
+        obsolete.path.unlink(missing_ok=True)
+    return updated
+
+
+def _materialize_constrained_checkpoints(
+    candidates: tuple[ValidationCandidate, ...],
+    *,
+    layout: RunLayout,
+    stage: str,
+) -> dict[str, Any]:
+    joint = select_constrained_joint(candidates)
+    best_craquelure = max(
+        candidates,
+        key=lambda candidate: (candidate.craquelure_score, candidate.loss_f1, -candidate.epoch),
+    )
+    best_loss = max(
+        candidates,
+        key=lambda candidate: (candidate.loss_f1, candidate.craquelure_score, -candidate.epoch),
+    )
+    destinations = {
+        f"{stage}_best.pt": joint,
+        f"{stage}_best_craquelure.pt": best_craquelure,
+        f"{stage}_best_loss.pt": best_loss,
+    }
+    if stage == "stage2":
+        destinations.update({
+            "best_joint.pt": joint,
+            "best_craquelure.pt": best_craquelure,
+            "best_loss.pt": best_loss,
+        })
+    for name, candidate in destinations.items():
+        shutil.copy2(candidate.path, layout.checkpoints / name)
+    best_loss_f1 = best_loss.loss_f1
+    return {
+        "criterion": (
+            "maximize 0.5*craquelure_F1 + 0.5*craquelure_boundary_F1 subject "
+            f"to loss_F1 >= best_loss_F1 - {LOSS_F1_TOLERANCE}"
+        ),
+        "loss_f1_tolerance": LOSS_F1_TOLERANCE,
+        "best_loss_f1": best_loss_f1,
+        "minimum_eligible_loss_f1": best_loss_f1 - LOSS_F1_TOLERANCE,
+        "selected": {
+            "path": str(joint.path),
+            "epoch": joint.epoch,
+            "craquelure_f1": joint.craquelure_f1,
+            "craquelure_boundary_f1": joint.boundary_f1,
+            "craquelure_score": joint.craquelure_score,
+            "loss_f1": joint.loss_f1,
+        },
+        "diagnostic_best_craquelure": {
+            "path": str(best_craquelure.path),
+            "epoch": best_craquelure.epoch,
+            "craquelure_score": best_craquelure.craquelure_score,
+            "loss_f1": best_craquelure.loss_f1,
+        },
+        "diagnostic_best_loss": {
+            "path": str(best_loss.path),
+            "epoch": best_loss.epoch,
+            "craquelure_score": best_loss.craquelure_score,
+            "loss_f1": best_loss.loss_f1,
+        },
+        "pareto_candidate_count": len(candidates),
+    }
 
 
 @torch.no_grad()
@@ -387,6 +416,8 @@ def _training_tile_losses(
     model: DualAdapterSam3,
     loader: DataLoader,
     device: torch.device,
+    *,
+    craquelure_loss: str = "original",
 ) -> tuple[dict[str, float], set[str]]:
     losses: dict[str, float] = {}
     both_class: set[str] = set()
@@ -396,10 +427,21 @@ def _training_tile_losses(
         with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
             output = model(batch["image"])
         for index, name in enumerate(batch["image_id"]):
-            one = multilabel_objective(
-                output.logits[index : index + 1], output.presence_logits[index : index + 1],
-                batch["targets"][index : index + 1], batch["valid_masks"][index : index + 1],
-                batch["class_present"][index : index + 1], routing=None,
+            one_output = DualAdapterSam3Output(
+                logits=output.logits[index : index + 1],
+                presence_logits=output.presence_logits[index : index + 1],
+                routing=(),
+                vision_forward_calls=output.vision_forward_calls,
+            )
+            one_batch = {
+                "targets": batch["targets"][index : index + 1],
+                "valid_masks": batch["valid_masks"][index : index + 1],
+                "class_present": batch["class_present"][index : index + 1],
+            }
+            one = _objective(
+                one_output,
+                one_batch,
+                craquelure_loss=craquelure_loss,
             )
             losses[str(name)] = float(one.segmentation)
             if bool(batch["class_present"][index].all()):
@@ -460,6 +502,7 @@ def train_fold(args: argparse.Namespace) -> Path:
         model_variant=args.model_variant,
         checkpoint=args.checkpoint,
         device=device,
+        full_pixel_decoder=args.full_pixel_decoder,
     ).to(device)
     info = experiment_root / "info"
     _write_or_validate_model_contract(info / "model_contract.json", model.model_contract)
@@ -471,6 +514,18 @@ def train_fold(args: argparse.Namespace) -> Path:
     write_json(info / "environment.json", {
         "python": platform.python_version(), "torch": torch.__version__, "cuda": torch.version.cuda,
         "gpu": torch.cuda.get_device_name(0), "git_revision": _git_revision(), "seed": 42,
+    })
+    write_json(info / "experiment_contract.json", {
+        "experiment_type": "full_stage1_stage2_training",
+        "model_variant": args.model_variant,
+        "full_effective_pixel_decoder": args.full_pixel_decoder,
+        "craquelure_loss": args.craquelure_loss,
+        "class_weights": {"crack_craquelure": 0.5, "loss": 0.5},
+        "checkpoint_selection": args.checkpoint_selection,
+        "loss_f1_tolerance": (
+            LOSS_F1_TOLERANCE if args.checkpoint_selection == "constrained_joint" else None
+        ),
+        "outer_test_excluded_from_selection": True,
     })
     write_json(layout.config / "resolved_config.json", vars(args))
 
@@ -485,18 +540,38 @@ def train_fold(args: argparse.Namespace) -> Path:
     stage1_best = float("inf")
     stage1_best_path = layout.checkpoints / "stage1_best.pt"
     stage1_bundle = build_optimizer_and_scheduler(model, stage="stage1", epochs=args.stage1_epochs)
+    stage1_names = tuple(name for name, parameter in model.named_parameters() if parameter.requires_grad)
+    write_json(layout.config / "stage1_trainable_scope.json", {
+        "names": stage1_names,
+        "tensor_count": len(stage1_names),
+        "parameter_count": sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad),
+        "optimizer_groups": [
+            {"learning_rate": group["lr"], "weight_decay": group["weight_decay"], "parameter_count": sum(parameter.numel() for parameter in group["params"])}
+            for group in stage1_bundle.optimizer.param_groups
+        ],
+    })
+    stage1_candidates: tuple[ValidationCandidate, ...] = ()
     started = time.time()
     for local_epoch in range(args.stage1_epochs):
         global_epoch += 1
         temperature = set_epoch_router_temperature(model, local_epoch)
-        train_loss, router_rows = _run_train_epoch(model, train_loader, stage1_bundle.optimizer, device, epoch=global_epoch, stage="stage1")
-        val_loss, metrics = _run_validation(model, validation_loader, device)
+        train_loss, router_rows = _run_train_epoch(
+            model, train_loader, stage1_bundle.optimizer, device,
+            epoch=global_epoch, stage="stage1", craquelure_loss=args.craquelure_loss,
+        )
+        val_loss, metrics = _run_validation(
+            model, validation_loader, device, craquelure_loss=args.craquelure_loss
+        )
         lr = stage1_bundle.optimizer.param_groups[0]["lr"]
         macro = metrics["macro"]
         reporter.record(global_epoch, train_loss=train_loss, validation_loss=val_loss, f1=macro["f1"], precision=macro["precision"], recall=macro["recall"], iou=macro["iou"], accuracy=macro["accuracy"], learning_rate=lr)
         for concept in CHANNEL_ORDER:
             writer.add_scalar(f"metrics/{concept}/f1", metrics["per_class"][concept]["f1"], global_epoch)
             writer.add_scalar(f"metrics/{concept}/iou", metrics["per_class"][concept]["iou"], global_epoch)
+            writer.add_scalar(f"metrics/{concept}/precision", metrics["per_class"][concept]["precision"], global_epoch)
+            writer.add_scalar(f"metrics/{concept}/recall", metrics["per_class"][concept]["recall"], global_epoch)
+        boundary = metrics["boundary"]["crack_craquelure"]
+        writer.add_scalar("metrics/crack_craquelure/boundary_f1", boundary["f1"], global_epoch)
         writer.add_scalar("metrics/macro_f1", macro["f1"], global_epoch)
         writer.add_scalar("router/temperature", temperature, global_epoch)
         router_writer.writerows(router_rows)
@@ -504,15 +579,38 @@ def train_fold(args: argparse.Namespace) -> Path:
         aggregated_usage = router_health.update(router_rows)
         for (layer_index, expert_index), usage in aggregated_usage.items():
             writer.add_scalar(f"router/layer_{layer_index}/expert_{expert_index}_usage", usage, global_epoch)
-        if val_loss < stage1_best:
+        if args.checkpoint_selection == "constrained_joint":
+            stage1_candidates = _update_checkpoint_front(
+                stage1_candidates,
+                layout=layout,
+                model=model,
+                stage="stage1",
+                epoch=global_epoch,
+                validation_loss=val_loss,
+                metrics=metrics,
+                registry_hash=registry.sha256,
+                split_hash=split.sha256,
+                optimizer=stage1_bundle.optimizer,
+                scheduler=stage1_bundle.scheduler,
+            )
+        elif val_loss < stage1_best:
             stage1_best = val_loss
-            _save_checkpoint(stage1_best_path, model, stage="stage1", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage1_bundle.optimizer, scheduler=stage1_bundle.scheduler)
-        _save_checkpoint(layout.checkpoints / "stage1_last.pt", model, stage="stage1", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage1_bundle.optimizer, scheduler=stage1_bundle.scheduler)
+            _save_checkpoint(stage1_best_path, model, stage="stage1", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage1_bundle.optimizer, scheduler=stage1_bundle.scheduler, validation_metrics=metrics)
+        _save_checkpoint(layout.checkpoints / "stage1_last.pt", model, stage="stage1", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage1_bundle.optimizer, scheduler=stage1_bundle.scheduler, validation_metrics=metrics)
         stage1_bundle.scheduler.step()
-        print(json.dumps({"stage": "stage1", "epoch": local_epoch + 1, "train_loss": train_loss, "validation_segmentation_loss": val_loss, "macro_f1": macro["f1"], "elapsed_minutes": (time.time() - started) / 60}, ensure_ascii=False), flush=True)
+        print(json.dumps({"stage": "stage1", "epoch": local_epoch + 1, "train_loss": train_loss, "validation_segmentation_loss": val_loss, "macro_f1": macro["f1"], "craquelure_f1": metrics["per_class"]["crack_craquelure"]["f1"], "craquelure_boundary_f1": boundary["f1"], "loss_f1": metrics["per_class"]["loss"]["f1"], "elapsed_minutes": (time.time() - started) / 60}, ensure_ascii=False), flush=True)
 
+    stage1_selection: dict[str, Any] | None = None
+    if args.checkpoint_selection == "constrained_joint":
+        stage1_selection = _materialize_constrained_checkpoints(
+            stage1_candidates, layout=layout, stage="stage1"
+        )
+        stage1_checkpoint = torch.load(stage1_best_path, map_location="cpu", weights_only=True)
+        stage1_best = float(stage1_checkpoint["validation_segmentation_loss"])
     _load_adaptation(stage1_best_path, model, expected_prompt_hash=registry.sha256, expected_split_hash=split.sha256)
-    per_tile_losses, both_class = _training_tile_losses(model, train_eval_loader, device)
+    per_tile_losses, both_class = _training_tile_losses(
+        model, train_eval_loader, device, craquelure_loss=args.craquelure_loss
+    )
     hard_pool = build_stage2_hard_pool(membership.train, both_class, per_tile_losses)
     write_json(layout.config / "stage2_hard_pool.json", {"source": "stage1_best", "tile_ids": list(hard_pool), "both_class_tile_ids": sorted(both_class), "per_tile_stage1_segmentation_loss": per_tile_losses, "top_fraction": 0.25, "seed": 42})
     hard_set = set(hard_pool)
@@ -521,43 +619,94 @@ def train_fold(args: argparse.Namespace) -> Path:
     weights = torch.tensor([0.5 / train_count + (0.5 / hard_count if name in hard_set else 0.0) for name in train_dataset.names], dtype=torch.double)
     stage2_loader = _loader(train_dataset, batch_size=args.batch_size, train=True, weights=weights, workers=args.workers)
     stage2_bundle = build_optimizer_and_scheduler(model, stage="stage2", epochs=args.stage2_epochs)
+    stage2_names = tuple(name for name, parameter in model.named_parameters() if parameter.requires_grad)
+    write_json(layout.config / "stage2_trainable_scope.json", {
+        "names": stage2_names,
+        "tensor_count": len(stage2_names),
+        "parameter_count": sum(parameter.numel() for parameter in model.parameters() if parameter.requires_grad),
+        "optimizer_groups": [
+            {"learning_rate": group["lr"], "weight_decay": group["weight_decay"], "parameter_count": sum(parameter.numel() for parameter in group["params"])}
+            for group in stage2_bundle.optimizer.param_groups
+        ],
+    })
     stage2_best = float("inf")
     stage2_best_path = layout.checkpoints / "stage2_best.pt"
+    stage2_candidates: tuple[ValidationCandidate, ...] = ()
     for local_epoch in range(args.stage2_epochs):
         global_epoch += 1
         model.set_router_temperature(1.0)
-        train_loss, router_rows = _run_train_epoch(model, stage2_loader, stage2_bundle.optimizer, device, epoch=global_epoch, stage="stage2")
-        val_loss, metrics = _run_validation(model, validation_loader, device)
+        train_loss, router_rows = _run_train_epoch(
+            model, stage2_loader, stage2_bundle.optimizer, device,
+            epoch=global_epoch, stage="stage2", craquelure_loss=args.craquelure_loss,
+        )
+        val_loss, metrics = _run_validation(
+            model, validation_loader, device, craquelure_loss=args.craquelure_loss
+        )
         lr = stage2_bundle.optimizer.param_groups[0]["lr"]
         macro = metrics["macro"]
         reporter.record(global_epoch, train_loss=train_loss, validation_loss=val_loss, f1=macro["f1"], precision=macro["precision"], recall=macro["recall"], iou=macro["iou"], accuracy=macro["accuracy"], learning_rate=lr)
         for concept in CHANNEL_ORDER:
             writer.add_scalar(f"metrics/{concept}/f1", metrics["per_class"][concept]["f1"], global_epoch)
             writer.add_scalar(f"metrics/{concept}/iou", metrics["per_class"][concept]["iou"], global_epoch)
+            writer.add_scalar(f"metrics/{concept}/precision", metrics["per_class"][concept]["precision"], global_epoch)
+            writer.add_scalar(f"metrics/{concept}/recall", metrics["per_class"][concept]["recall"], global_epoch)
+        boundary = metrics["boundary"]["crack_craquelure"]
+        writer.add_scalar("metrics/crack_craquelure/boundary_f1", boundary["f1"], global_epoch)
         writer.add_scalar("metrics/macro_f1", macro["f1"], global_epoch)
         router_writer.writerows(router_rows)
         router_handle.flush()
         aggregated_usage = router_health.update(router_rows)
         for (layer_index, expert_index), usage in aggregated_usage.items():
             writer.add_scalar(f"router/layer_{layer_index}/expert_{expert_index}_usage", usage, global_epoch)
-        if val_loss < stage2_best:
+        if args.checkpoint_selection == "constrained_joint":
+            stage2_candidates = _update_checkpoint_front(
+                stage2_candidates,
+                layout=layout,
+                model=model,
+                stage="stage2",
+                epoch=global_epoch,
+                validation_loss=val_loss,
+                metrics=metrics,
+                registry_hash=registry.sha256,
+                split_hash=split.sha256,
+                optimizer=stage2_bundle.optimizer,
+                scheduler=stage2_bundle.scheduler,
+            )
+        elif val_loss < stage2_best:
             stage2_best = val_loss
-            _save_checkpoint(stage2_best_path, model, stage="stage2", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage2_bundle.optimizer, scheduler=stage2_bundle.scheduler)
-        _save_checkpoint(layout.checkpoints / "stage2_last.pt", model, stage="stage2", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage2_bundle.optimizer, scheduler=stage2_bundle.scheduler)
+            _save_checkpoint(stage2_best_path, model, stage="stage2", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage2_bundle.optimizer, scheduler=stage2_bundle.scheduler, validation_metrics=metrics)
+        _save_checkpoint(layout.checkpoints / "stage2_last.pt", model, stage="stage2", epoch=global_epoch, validation_segmentation_loss=val_loss, registry_hash=registry.sha256, split_hash=split.sha256, optimizer=stage2_bundle.optimizer, scheduler=stage2_bundle.scheduler, validation_metrics=metrics)
         stage2_bundle.scheduler.step()
-        print(json.dumps({"stage": "stage2", "epoch": local_epoch + 1, "train_loss": train_loss, "validation_segmentation_loss": val_loss, "macro_f1": macro["f1"], "elapsed_minutes": (time.time() - started) / 60}, ensure_ascii=False), flush=True)
+        print(json.dumps({"stage": "stage2", "epoch": local_epoch + 1, "train_loss": train_loss, "validation_segmentation_loss": val_loss, "macro_f1": macro["f1"], "craquelure_f1": metrics["per_class"]["crack_craquelure"]["f1"], "craquelure_boundary_f1": boundary["f1"], "loss_f1": metrics["per_class"]["loss"]["f1"], "elapsed_minutes": (time.time() - started) / 60}, ensure_ascii=False), flush=True)
 
     router_handle.close()
+    stage2_selection: dict[str, Any] | None = None
+    if args.checkpoint_selection == "constrained_joint":
+        stage2_selection = _materialize_constrained_checkpoints(
+            stage2_candidates, layout=layout, stage="stage2"
+        )
+        stage2_checkpoint = torch.load(stage2_best_path, map_location="cpu", weights_only=True)
+        stage2_best = float(stage2_checkpoint["validation_segmentation_loss"])
     selected = _load_adaptation(stage2_best_path, model, expected_prompt_hash=registry.sha256, expected_split_hash=split.sha256)
     validation_rows = _qualitative_rows(model, validation_loader, device, layout)
-    write_json(layout.metrics / "selection.json", {"criterion": "minimum validation segmentation loss", "stage1_best": str(stage1_best_path), "stage1_best_loss": stage1_best, "stage2_best": str(stage2_best_path), "stage2_best_loss": stage2_best, "selected_epoch": selected["epoch"]})
+    write_json(layout.metrics / "selection.json", {
+        "criterion": selected.get("selection_criterion", "minimum validation segmentation loss"),
+        "stage1_best": str(stage1_best_path),
+        "stage1_best_loss": stage1_best,
+        "stage1_selection": stage1_selection,
+        "stage2_best": str(stage2_best_path),
+        "stage2_best_loss": stage2_best,
+        "stage2_selection": stage2_selection,
+        "selected_epoch": selected["epoch"],
+        "outer_test_excluded_from_selection": True,
+    })
     finalize_reporting(
         layout, writer=writer, reporter=reporter, validation_rows=validation_rows,
         selected_epoch=int(selected["epoch"]),
         outer_test_metrics={
             "status": "deferred_until_all_five_validation_checkpoints_are_locked",
             "selected_epoch": int(selected["epoch"]),
-            "selection_source": "stage2 minimum validation segmentation loss",
+            "selection_source": selected.get("selection_criterion", "stage2 minimum validation segmentation loss"),
             "outer_test_excluded_from_selection": True,
         },
     )
@@ -582,6 +731,21 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--stage2-epochs", type=int, default=20)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument(
+        "--full-pixel-decoder",
+        action="store_true",
+        help="train both PixelDecoder stages used by the three-FPN path and semantic_seg_head",
+    )
+    parser.add_argument(
+        "--craquelure-loss",
+        choices=("original", "sam2_bce_dice"),
+        default="original",
+    )
+    parser.add_argument(
+        "--checkpoint-selection",
+        choices=("validation_loss", "constrained_joint"),
+        default="validation_loss",
+    )
     parser.add_argument("--resume-compatible", action="store_true")
     return parser
 
@@ -590,6 +754,8 @@ def main() -> None:
     args = build_parser().parse_args()
     if args.stage1_epochs < 1 or args.stage2_epochs < 1:
         raise ValueError("both training stages require at least one epoch")
+    if args.checkpoint_selection == "constrained_joint" and not args.full_pixel_decoder:
+        raise ValueError("constrained_joint selection is reserved for full PixelDecoder training")
     train_fold(args)
 
 

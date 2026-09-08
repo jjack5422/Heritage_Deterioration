@@ -13,6 +13,7 @@ import torch
 from torch import nn
 
 from .da_moe import router_temperature
+from .decoder_training import expected_full_pixel_decoder_keys
 
 
 @dataclass(frozen=True)
@@ -55,11 +56,62 @@ def set_reproducible_seed(seed: int = 42) -> None:
 
 def build_optimizer_and_scheduler(model: nn.Module, *, stage: str, epochs: int) -> OptimizerBundle:
     names = model.configure_stage(stage)
-    parameters = [parameter for parameter in model.parameters() if parameter.requires_grad]
-    if not parameters or not names:
+    named_parameters = {
+        name: parameter for name, parameter in model.named_parameters() if parameter.requires_grad
+    }
+    if not named_parameters or not names:
         raise RuntimeError(f"{stage} has no trainable adaptation parameters")
     learning_rate = 5e-4 if stage == "stage1" else 1e-4
-    optimizer = torch.optim.AdamW(parameters, lr=learning_rate, weight_decay=0.1)
+    if not bool(getattr(model, "full_pixel_decoder", False)):
+        optimizer = torch.optim.AdamW(
+            list(named_parameters.values()), lr=learning_rate, weight_decay=0.1
+        )
+    else:
+        decoder_keys = set(expected_full_pixel_decoder_keys(model))
+        groups: list[dict[str, Any]] = []
+
+        def add_group(group_names: list[str], *, lr: float, weight_decay: float) -> None:
+            if group_names:
+                groups.append({
+                    "params": [named_parameters[name] for name in group_names],
+                    "lr": lr,
+                    "weight_decay": weight_decay,
+                })
+
+        base_names = [name for name in named_parameters if name not in decoder_keys]
+        pixel_names = [
+            name for name in named_parameters
+            if name in decoder_keys and ".semantic_seg_head." not in name
+        ]
+        semantic_names = [
+            name for name in named_parameters
+            if name in decoder_keys and ".semantic_seg_head." in name
+        ]
+        add_group(base_names, lr=learning_rate, weight_decay=0.1)
+        add_group(
+            [name for name in pixel_names if name.endswith(".weight") and ".norms." not in name],
+            lr=5e-5,
+            weight_decay=1e-4,
+        )
+        add_group(
+            [name for name in pixel_names if not (name.endswith(".weight") and ".norms." not in name)],
+            lr=5e-5,
+            weight_decay=0.0,
+        )
+        add_group(
+            [name for name in semantic_names if name.endswith(".weight")],
+            lr=1e-4,
+            weight_decay=1e-4,
+        )
+        add_group(
+            [name for name in semantic_names if not name.endswith(".weight")],
+            lr=1e-4,
+            weight_decay=0.0,
+        )
+        grouped_ids = {id(parameter) for group in groups for parameter in group["params"]}
+        if grouped_ids != {id(parameter) for parameter in named_parameters.values()}:
+            raise RuntimeError("optimizer parameter groups do not cover the exact trainable scope")
+        optimizer = torch.optim.AdamW(groups)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=epochs)
     return OptimizerBundle(optimizer, scheduler)
 
