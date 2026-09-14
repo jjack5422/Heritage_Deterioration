@@ -91,14 +91,14 @@ Mask 使用單通道 uint8 class-index PNG：
 | Learning rate | 2e-4 |
 | Weight decay | 5e-5 |
 | Scheduler | CosineAnnealingLR，T_max=80，eta_min=0 |
-| Loss | foreground-weighted BCE + 0.65 × soft Dice |
-| BCE positive weight | 2.0 |
+| Loss | expert-specific BCE + 0.65 × soft Dice |
+| BCE positive weight | `scratch_crack=1.0`、`shrinkage_craquelure=2.0`、`loss=1.0` |
 | Gradient clipping | 1.0 |
 | Augmentation | HFlip 0.5、VFlip 0.5 |
 | Threshold | 0.5 fixed |
 | Checkpoint selection | minimum validation loss |
 
-`positive_weight=2.0` 表示 BCE 中每個 foreground positive pixel 的權重是 negative pixel 的兩倍，即 loss weighting 的 foreground:background 為 2:1。這不是 dataset sampling ratio，也不是強制每個 batch 具有 2:1 像素數量。Soft Dice 本身不套用此 `pos_weight`。
+只有 `shrinkage_craquelure` 保留 foreground-weighted BCE：`positive_weight=2.0` 表示每個 foreground positive pixel 的 BCE 權重是 negative pixel 的兩倍，即 loss weighting 的 foreground:background 為 2:1。`scratch_crack` 與 `loss` 使用 `positive_weight=1.0`，不額外提高 foreground 權重。這些都是 loss weighting，不是 dataset sampling ratio，也不強制 batch 具有特定前景／背景像素比例。Soft Dice 不套用 `pos_weight`。
 
 ## 實驗與評估
 
