@@ -132,7 +132,13 @@ class Sam3AdapterModel(nn.Module):
         if self.model_input_size == 512:
             prepared = rgb
         else:
-            prepared = F.interpolate(rgb, size=(self.model_input_size, self.model_input_size), mode="bilinear", align_corners=False, antialias=True)
+            prepared = F.interpolate(
+                rgb,
+                size=(self.model_input_size, self.model_input_size),
+                mode="bicubic",
+                align_corners=False,
+                antialias=True,
+            ).clamp_(0.0, 1.0)
         logits = self.model((prepared - 0.5) / 0.5)
         return F.interpolate(logits.float(), size=(512, 512), mode="bilinear", align_corners=False)
 

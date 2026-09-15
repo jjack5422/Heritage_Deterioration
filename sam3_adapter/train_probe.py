@@ -26,7 +26,6 @@ from sam2_adapter.reporting import EpochReporter, RunLayout, append_log, finaliz
 from sam2_adapter.runtime import _autocast, _batch_tensor, _git_revision, _make_loader, _package_versions, _seed_everything, _sha256
 from sam3_adapter.losses import weighted_bce_dice_loss
 from sam3_adapter.probe_models import Sam2ProbeModel, Sam3ProbeModel
-from sam3_adapter.sam3_adapter_model import Sam3AdapterModel
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -35,7 +34,6 @@ DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_clean_v2_merged_craquel
 CHECKPOINTS = {
     "sam2_probe": WORKSPACE_ROOT / "segment-anything-2" / "checkpoints" / "sam2.1_hiera_large.pt",
     "sam3_probe": WORKSPACE_ROOT / "segment-anything-3" / "checkpoints" / "sam3.pt",
-    "sam3_adapter": WORKSPACE_ROOT / "segment-anything-3" / "checkpoints" / "sam3.pt",
 }
 THRESHOLD = 0.5
 
@@ -58,15 +56,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--experiment-id", default="2026-08-26_sam2-sam3-native-probe-adapter_seed42")
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
-    parser.add_argument("--model-input-size", type=int, choices=(512, 1008), default=None,
-                        help="SAM3-Adapter input size; default 1008. Only affects sam3_adapter.")
-    parser.add_argument("--smoke-test", action="store_true")
     args = parser.parse_args(argv)
     args.checkpoint = (args.checkpoint or CHECKPOINTS[args.group]).resolve()
-    if args.model_input_size is None:
-        args.model_input_size = 1008
-    if args.group != "sam3_adapter" and args.model_input_size != 1008:
-        parser.error("--model-input-size=512 is only supported for sam3_adapter")
     if args.batch_size * args.accumulation_steps != 4:
         parser.error("effective batch size must equal 4")
     if args.positive_weight != 2.0 or args.dice_weight != 0.65:
@@ -77,15 +68,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def _build(args: argparse.Namespace, device: torch.device, *, fold: int) -> nn.Module:
-    cls = {"sam2_probe": Sam2ProbeModel, "sam3_probe": Sam3ProbeModel, "sam3_adapter": Sam3AdapterModel}[args.group]
-    if args.group == "sam3_adapter":
-        # Adapter layers and task-specific decoder parameters absent from the
-        # official checkpoint are newly initialized. Make that initialization
-        # depend only on the approved base seed and fold, not on the order in
-        # which folds happen to run in this process.
-        with torch.random.fork_rng(devices=[]):
-            torch.manual_seed(args.seed + fold)
-            return cls(args.checkpoint, device=device, input_size=args.model_input_size)
+    cls = {"sam2_probe": Sam2ProbeModel, "sam3_probe": Sam3ProbeModel}[args.group]
     return cls(args.checkpoint, device=device, probe_seed=args.seed + fold)
 
 
@@ -168,15 +151,15 @@ def _metadata(layout: RunLayout, model: nn.Module, plan: H0DataPlan, args: argpa
         "backbone": "SAM2.1 Hiera-L" if args.group == "sam2_probe" else "SAM3 ViT",
         "model_input_size": model.model_input_size,
         "source_and_metric_size": 512,
-        "decoder": "SharedFpnProbe(width=128, three 256-channel levels)" if args.group != "sam3_adapter" else "author SAM-family mask decoder",
+        "decoder": "SharedFpnProbe(width=128, three 256-channel levels)",
         "prompt": "none",
         "parameter_counts": counts,
         "base_checkpoint": str(args.checkpoint),
         "base_checkpoint_sha256": checkpoint_hash,
-        "trainable_scope": "probe only" if args.group != "sam3_adapter" else "official-author prompt_generator adapter + active SAM-family mask decoder path",
+        "trainable_scope": "probe only",
         "trainable_names": list(model.trainable_names),
         "trainable_initialization_sha256": _trainable_initialization_sha256(model),
-        "probe_seed": getattr(model, "probe_seed", None),
+        "probe_seed": model.probe_seed,
     })
     write_json(layout.config / "environment.json", {
         "python": sys.version, "platform": platform.platform(), "torch": torch.__version__, "cuda": torch.version.cuda,
@@ -282,7 +265,7 @@ def main(argv: list[str] | None = None) -> int:
     write_json(info / "experiment.json", {
         "schema_version": 1,
         "experiment_id": args.experiment_id,
-        "groups": ["sam2_probe", "sam3_probe", "sam3_adapter"],
+        "groups": ["sam2_probe", "sam3_probe"],
         "fold_count": 5,
         "dataset_root": str(args.dataset),
         "manifest_hash": plan.manifest_hash,
