@@ -56,42 +56,89 @@ def atomic_write(path: Path, content: str) -> None:
 
 
 class ReviewDataset:
-    def __init__(self, dataset: Path):
+    def __init__(
+        self,
+        dataset: Path,
+        candidates: Path | None = None,
+        classes: set[str] | None = None,
+    ):
         self.root = dataset.resolve()
+        requested_classes = set(classes) if classes is not None else None
+        if requested_classes is not None:
+            requested_classes.add("background")
         if (self.root / "JPEGImages").is_dir():
             image_dir, mask_dir = self.root / "JPEGImages", self.root / "SegmentationClass"
             self.rgb_masks = True
             labelmap = self.root / "labelmap.txt"
-            self.colors = {}
+            self.source_colors = {}
             for line in labelmap.read_text(encoding="utf-8-sig").splitlines():
                 if line.strip() and not line.startswith("#"):
                     name, rgb, *_ = line.split(":")
-                    self.colors[name] = tuple(int(v) for v in rgb.split(","))
-            self.class_ids = {}
+                    self.source_colors[name] = tuple(int(v) for v in rgb.split(","))
+            self.source_class_ids = {}
+            available_classes = set(self.source_colors)
             contract = labelmap.read_bytes()
         else:
             image_dir, mask_dir = self.root / "images", self.root / "masks"
             self.rgb_masks = False
             manifest_path = self.root / "manifest.json"
             manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-            self.class_ids = manifest["label_contract"]["class_ids"].copy()
-            self.class_ids["ignore"] = manifest["label_contract"].get("ignore_value", 255)
-            unknown = set(self.class_ids) - COLORS.keys()
-            if unknown:
-                raise ValueError(f"No display colors defined for: {sorted(unknown)}")
-            self.colors = {name: COLORS[name] for name in self.class_ids}
+            self.source_class_ids = manifest["label_contract"]["class_ids"].copy()
+            self.source_class_ids["ignore"] = manifest["label_contract"].get("ignore_value", 255)
+            self.source_colors = {}
+            available_classes = set(self.source_class_ids)
             contract = manifest_path.read_bytes()
-        if "background" not in self.colors:
+        unknown = available_classes - COLORS.keys()
+        if unknown:
+            raise ValueError(f"No display colors defined for: {sorted(unknown)}")
+        if "background" not in available_classes:
             raise ValueError("Label contract must define background")
+        if requested_classes is not None:
+            unknown_requested = requested_classes - available_classes
+            if unknown_requested:
+                raise ValueError(f"Requested classes are not in the label contract: {sorted(unknown_requested)}")
+            visible_names = [name for name in available_classes if name in requested_classes]
+        else:
+            visible_names = list(available_classes)
+        visible_names.sort(key=lambda name: (name != "background", name == "ignore", name))
+        self.colors = {name: COLORS[name] for name in visible_names}
+        if requested_classes is not None and requested_classes != available_classes:
+            self.colors["ignore"] = COLORS["ignore"]
+        self.class_ids = {
+            name: class_id
+            for name, class_id in self.source_class_ids.items()
+            if name in self.colors
+        }
         if not mask_dir.is_dir():
             raise ValueError(f"Missing mask directory: {mask_dir}")
-        images = sorted(p for p in image_dir.iterdir() if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"})
+        images = sorted(
+            p
+            for p in image_dir.iterdir()
+            if p.suffix.lower() in {".png", ".jpg", ".jpeg", ".tif", ".tiff", ".bmp"}
+        )
         if not images:
             raise ValueError(f"No images found: {image_dir}")
         if len({p.stem for p in images}) != len(images):
             raise ValueError("Duplicate image stems; cannot pair masks unambiguously")
+        images_by_name = {image.name: image for image in images}
+        if candidates is not None:
+            with candidates.open(encoding="utf-8-sig", newline="") as stream:
+                reader = csv.DictReader(stream)
+                if not reader.fieldnames or "name" not in reader.fieldnames:
+                    raise ValueError("Candidate CSV must contain a name column")
+                candidate_names = [row["name"] for row in reader]
+            if not candidate_names:
+                raise ValueError("Candidate CSV contains no images")
+            duplicates = sorted(name for name in set(candidate_names) if candidate_names.count(name) > 1)
+            if duplicates:
+                raise ValueError(f"Candidate CSV contains duplicate names: {duplicates[:5]}")
+            missing = sorted(set(candidate_names) - images_by_name.keys())
+            if missing:
+                raise ValueError(f"Candidate images are missing from the dataset: {missing[:5]}")
+            images = [images_by_name[name] for name in candidate_names]
         self.items = []
         digest = hashlib.sha256(contract)
+        digest.update(",".join(sorted(self.colors)).encode("utf-8"))
         for image in images:
             mask = mask_dir / f"{image.stem}.png"
             if not mask.is_file():
@@ -115,9 +162,15 @@ class ReviewDataset:
         colored = np.zeros_like(original)
         known = np.zeros(values.shape[:2], dtype=bool)
         foreground = np.zeros_like(known)
-        for name, color in self.colors.items():
-            pixels = np.all(values == color, axis=-1) if self.rgb_masks else values == self.class_ids[name]
-            colored[pixels] = color
+        source_labels = self.source_colors if self.rgb_masks else self.source_class_ids
+        for name, source_value in source_labels.items():
+            pixels = (
+                np.all(values == source_value, axis=-1)
+                if self.rgb_masks
+                else values == source_value
+            )
+            display_name = name if name in self.colors else "ignore"
+            colored[pixels] = self.colors[display_name]
             known |= pixels
             if name != "background":
                 foreground |= pixels
@@ -328,11 +381,13 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="逐張查看原圖／舊標註，篩選並儲存名單。")
     parser.add_argument("--dataset", type=Path, default=DEFAULT_DATASET, help="CVAT JPEGImages/SegmentationClass 或 images/masks + manifest.json 的根目錄")
     parser.add_argument("--output", type=Path, default=DEFAULT_OUTPUT, help="篩選紀錄存放目錄")
+    parser.add_argument("--candidates", type=Path, help="只複選 CSV name 欄列出的影像，並依 CSV 順序顯示")
+    parser.add_argument("--classes", nargs="+", help="只顯示指定類別；其他已知標註以 ignore 顯示")
     parser.add_argument("--host", default="127.0.0.1", help="預設僅本機；遠端可透過 SSH port forwarding 使用")
     parser.add_argument("--port", type=int, default=7862)
     parser.add_argument("--check", action="store_true", help="檢查每張影像／遮罩配對、尺寸、類別後退出，不啟動網站")
     args = parser.parse_args()
-    dataset = ReviewDataset(args.dataset)
+    dataset = ReviewDataset(args.dataset, candidates=args.candidates, classes=set(args.classes) if args.classes else None)
     if args.check:
         for index in range(len(dataset.items)):
             dataset.load_pair(index)

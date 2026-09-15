@@ -94,6 +94,56 @@ def test_id_masks_follow_manifest_instead_of_assuming_class_numbers(tmp_path):
     assert foreground.tolist() == [[False, True, True]]
 
 
+def test_candidate_csv_limits_order_and_hidden_classes_render_as_ignore(tmp_path):
+    root = tmp_path / "dataset"
+    (root / "images").mkdir(parents=True)
+    (root / "masks").mkdir()
+    (root / "manifest.json").write_text(
+        json.dumps(
+            {
+                "label_contract": {
+                    "class_ids": {
+                        "background": 0,
+                        "crack": 1,
+                        "loss": 2,
+                        "shrinkage": 3,
+                        "craquelure": 4,
+                        "flaking": 5,
+                        "stain": 6,
+                    },
+                    "ignore_value": 255,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    for name in ("a.png", "b.png"):
+        Image.new("RGB", (2, 1)).save(root / "images" / name)
+        Image.fromarray(np.array([[1, 6]], dtype=np.uint8)).save(root / "masks" / name)
+    candidates = tmp_path / "selected.csv"
+    candidates.write_text("name,status\nb.png,keep\n", encoding="utf-8")
+
+    filtered = ReviewDataset(
+        root,
+        candidates=candidates,
+        classes={"crack", "loss", "shrinkage", "craquelure", "flaking"},
+    )
+    _, colored, foreground = filtered.load_pair(0)
+
+    assert [item["name"] for item in filtered.items] == ["b.png"]
+    assert set(filtered.colors) == {
+        "background",
+        "crack",
+        "loss",
+        "shrinkage",
+        "craquelure",
+        "flaking",
+        "ignore",
+    }
+    assert colored.tolist() == [[[255, 24, 3], [160, 160, 160]]]
+    assert foreground.tolist() == [[True, True]]
+
+
 def test_failed_save_keeps_previous_decision(dataset, tmp_path, monkeypatch):
     store = ReviewStore(dataset, tmp_path / "review")
     store.save(0, "keep", "original note")
