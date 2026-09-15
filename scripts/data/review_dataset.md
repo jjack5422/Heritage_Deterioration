@@ -34,6 +34,26 @@
   --output outputs/dataset_review_merged
 ```
 
+若要從既有 `selected.csv` 複選，使用 `--candidates` 限制候選名單；`--classes` 指定要顯示的類別，其他來源類別會顯示為灰色 ignore：
+
+```bash
+./crackseg_env/bin/python scripts/data/review_dataset.py \
+  --dataset datasets/dataset_clean_v2_prohibited \
+  --candidates selected.csv \
+  --classes crack loss shrinkage craquelure flaking \
+  --output outputs/dataset_review_jacky
+```
+
+完成複選後，將保留名單匯出成分組的五類資料集：
+
+```bash
+./crackseg_env/bin/python scripts/data/export_selected_five_class.py \
+  --selections outputs/dataset_review_jacky/selected.csv \
+  --destination dataset_jacky
+```
+
+匯出器保留 `0–5` 類別 ID，將來源 stain（`6`）改為 ignore（`255`），並產生 `README.md`、`classes.txt` 與含檔案雜湊的 `manifest.json`。目的資料夾若已存在會停止，不會覆寫。
+
 切換資料集或變更影像／標註後，請使用另一個 `--output`，避免把舊的判斷套到不同資料。配對使用相同檔名 stem 的 PNG 遮罩；缺少遮罩會停止，尺寸或標註值異常會顯示載入錯誤。此工具供單人使用；同一輸出目錄只允許一個服務程序，請勿開多個分頁同時選擇。
 
 完整檢查所有配對（不啟動網站、不寫入選擇）：
@@ -41,3 +61,30 @@
 ```bash
 ./crackseg_env/bin/python scripts/data/review_dataset.py --check
 ```
+
+## Dataset114 人工隔離
+
+`dataset114` 使用獨立工具；它會直接維護 `metadata/manifest.csv`，不使用上面的 `outputs/dataset_review/` 名單：
+
+```bash
+./crackseg_env/bin/python scripts/data/review_dataset114.py
+```
+
+瀏覽器開啟 `http://127.0.0.1:7863`。操作方式：
+
+- `1` 保留、`2` 移至隔離區、`3` 待確認、`0` 重設；左右鍵換圖。
+- 可依狀態、`classes_present` 類別或檔名篩選，並切換疊圖／純 mask、透明度與縮放。
+- 「移至隔離區」會成對移動 image 與 mask，不會永久刪除：
+  - `dataset114/rejected_tiles/images/`
+  - `dataset114/rejected_tiles/masks/`
+- 主 `metadata/manifest.csv` 只保留有效 tiles；被隔離的完整原始列保存於 `rejected_tiles/manifest.csv`。
+- 「還原上一筆隔離」會移回檔案與 manifest 列；在已隔離 tile 上改選保留、待確認或未檢查也會還原。
+- 進度存在 `metadata/manual_review.json`，逐筆稽核紀錄存在 `metadata/manual_review.jsonl`。重新啟動會接續第一張未檢查 tile。
+
+啟動前只做完整資料檢查、不開啟網站：
+
+```bash
+./crackseg_env/bin/python scripts/data/review_dataset114.py --check
+```
+
+工具只供單人本機使用，同一份 `dataset114` 同時只能啟動一個程序。不要用多個分頁同時操作。
