@@ -15,6 +15,65 @@ A 對 B 是 backbone 表徵比較；C 對 D 是完整系統比較，後者不能
 
 注意：官方可驗證的 SAM3 發布目前只有約 4.55 億參數的 ViT（SAM2 Hiera-L 約 2.13 億）；沒有同等預訓練的 SAM3 小型 checkpoint。因此 A/B 控制共同 probe 與所有訓練／資料條件，但不是等參數量比較，這項限制已寫入 `spec.md` 與比較報告。
 
+## 實驗室 server 環境安裝
+
+以下指令從 repository 根目錄執行。Python 套件由根目錄
+`requirements.txt` 共用；PyTorch 因 CUDA wheel 必須符合目標 server
+的 NVIDIA driver，所以獨立安裝。
+
+精確重現目前已驗證的 PyTorch 2.11.0／CUDA 12.8 環境：
+
+```bash
+nvidia-smi
+python3.12 -m venv adapter_env
+source adapter_env/bin/activate
+python -m pip install --upgrade pip wheel "setuptools<81"
+python -m pip install --index-url https://download.pytorch.org/whl/cu128 \
+  torch==2.11.0 torchvision==0.26.0
+python -m pip install -r requirements.txt
+SAM2_BUILD_CUDA=0 python -m pip install --no-build-isolation --no-deps -e ./segment-anything-2
+python -m pip install --no-deps -e ./segment-anything-3
+python -m pip check
+```
+
+若 server driver 不支援 CUDA 12.8，請從
+[PyTorch Get Started](https://pytorch.org/get-started/locally/) 取得該
+server 適用的 `torch`／`torchvision` 安裝指令，只替換上述 PyTorch
+步驟。其餘 pinned dependencies 維持不變。`SAM2_BUILD_CUDA=0` 避免安裝
+不影響目前 Adapter 訓練的 SAM2 post-processing extension，因此不要求
+server 安裝 `nvcc`。
+
+必須一併傳送：
+
+```text
+segment-anything-2/checkpoints/sam2.1_hiera_large.pt
+segment-anything-3/checkpoints/sam3.pt
+outputs/deterioration_statistics/jacky_experts/
+訓練使用的 dataset 目錄
+```
+
+完整訓練最後依賴
+`$HOME/.codex/skills/training-output-reporting/scripts/` 產生 TensorBoard
+PNG、CSV 與 HTML dashboard。移機時必須一併複製目前工作站的
+`~/.codex/skills/training-output-reporting/`。
+
+安裝後先執行：
+
+```bash
+PYTHONPATH=. python -c "import torch; import sam2; import sam3; import sam2_adapter.train_adapter; import sam3_adapter.train; print({'torch': torch.__version__, 'wheel_cuda': torch.version.cuda, 'cuda_available': torch.cuda.is_available(), 'gpu': torch.cuda.get_device_name(0) if torch.cuda.is_available() else None})"
+PYTHONPATH=. python -m sam3_adapter.train --help
+PYTHONPATH=. python -m sam3_adapter.train \
+  --expert loss --validate-data-only
+```
+
+資料驗證通過後，在正式長時間訓練前執行單一 optimizer-step：
+
+```bash
+PYTHONPATH=. python -m sam3_adapter.train \
+  --expert loss --model-input-size 1008 --smoke-test
+```
+
+
 ## Probe 比較重現
 
 ```bash
