@@ -1,4 +1,4 @@
-"""Validated Jacky-training/reference-validation plan for three binary experts."""
+"""Validated Jacky-training and Dataset115 train/validation/test plans."""
 
 from __future__ import annotations
 
@@ -23,11 +23,27 @@ EXPERT_RAW_IDS: dict[str, tuple[int, ...]] = {
     "scratch_crack": (1,),
     "loss": (2,),
 }
-EXPERT_PARTITION_COUNTS: dict[str, tuple[int, int]] = {
-    "shrinkage_craquelure": (605, 138),
-    "scratch_crack": (601, 142),
-    "loss": (588, 155),
+EXPERT_PARTITION_COUNTS: dict[str, tuple[int, int, int]] = {
+    "shrinkage_craquelure": (1137, 123, 198),
+    "scratch_crack": (1241, 105, 112),
+    "loss": (1243, 108, 107),
 }
+EXPERT_DATASET115_COUNTS: dict[str, tuple[int, int, int]] = {
+    "shrinkage_craquelure": (394, 123, 198),
+    "scratch_crack": (498, 105, 112),
+    "loss": (500, 108, 107),
+}
+EXCLUDED_TRAINING_GROUPS: dict[str, tuple[str, ...]] = {
+    "shrinkage_craquelure": (),
+    "scratch_crack": (),
+    "loss": (),
+}
+EXPECTED_EXCLUDED_TRAINING_COUNTS = {
+    "shrinkage_craquelure": 0,
+    "scratch_crack": 0,
+    "loss": 0,
+}
+PARTITIONS = ("training", "validation", "test")
 _MEAN = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1, 1)
 _STD = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
 _BRIGHTNESS_RANGE = (0.85, 1.15)
@@ -40,9 +56,11 @@ _REQUIRED_ROW_KEYS = {
     "tile",
     "image",
     "mask",
+    "mask_encoding",
     "image_sha256",
     "mask_sha256",
 }
+_MASK_ENCODINGS = frozenset({"class_index_uint8", "binary_uint8_0_255"})
 
 
 class ExpertDataContractError(ValueError):
@@ -61,6 +79,7 @@ class ExpertDataPlan:
     dataset_policy: Mapping[str, str]
     train: tuple[Mapping[str, str], ...]
     validation: tuple[Mapping[str, str], ...]
+    test: tuple[Mapping[str, str], ...]
     partition_pixels: Mapping[str, int]
 
     def record(self) -> dict[str, Any]:
@@ -68,15 +87,19 @@ class ExpertDataPlan:
             "manifest": str(self.manifest_path),
             "expert": self.expert,
             "foreground_raw_ids": list(self.raw_ids),
-            "target_rule": "constituent raw IDs are foreground; all other known IDs are negative",
+            "target_rule": "Jacky raw IDs or Dataset115 expert binary masks become foreground",
             "dataset_sha256": self.dataset_sha256,
             "adopted_dataset_sha256": self.adopted_dataset_sha256,
             "class_sha256": self.class_sha256,
             "split_sha256": self.split_sha256,
-            "partition_tiles": {"training": len(self.train), "validation": len(self.validation)},
+            "partition_tiles": {
+                "training": len(self.train),
+                "validation": len(self.validation),
+                "test": len(self.test),
+            },
             "partition_positive_pixels": dict(self.partition_pixels),
             "dataset_policy": dict(self.dataset_policy),
-            "outer_test": "skipped",
+            "outer_test": "evaluate_once_after_validation_checkpoint_selection",
         }
 
 
@@ -108,9 +131,16 @@ def _validate_row(row: object, partition: str) -> dict[str, str]:
         mask_array = np.asarray(mask_file)
     if image_size != (IMAGE_SIZE, IMAGE_SIZE) or mask_array.shape != (IMAGE_SIZE, IMAGE_SIZE):
         raise ExpertDataContractError(f"expected a 512x512 RGB/mask pair: {image}, {mask}")
-    unknown = sorted(set(int(value) for value in np.unique(mask_array)) - KNOWN_RAW_IDS)
-    if unknown:
-        raise ExpertDataContractError(f"unknown raw IDs {unknown} in {mask}")
+    encoding = normalized["mask_encoding"]
+    if encoding not in _MASK_ENCODINGS:
+        raise ExpertDataContractError(f"unsupported mask encoding {encoding!r}")
+    values = {int(value) for value in np.unique(mask_array)}
+    if encoding == "class_index_uint8":
+        unknown = sorted(values - KNOWN_RAW_IDS)
+        if normalized["dataset"] != "dataset_jacky" or unknown:
+            raise ExpertDataContractError(f"invalid Jacky class-index mask {mask}: unknown={unknown}")
+    elif normalized["dataset"] != "dataset115_filtered" or not values.issubset({0, 255}):
+        raise ExpertDataContractError(f"invalid Dataset115 binary mask {mask}: values={sorted(values)}")
     return normalized
 
 
@@ -124,39 +154,53 @@ def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDa
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ExpertDataContractError(f"cannot read manifest {manifest_path}: {error}") from error
-    if payload.get("schema_version") != 4:
-        raise ExpertDataContractError("expert training requires schema_version 4 manifest")
+    if payload.get("schema_version") != 6:
+        raise ExpertDataContractError("expert training requires schema_version 6 manifest")
     if payload.get("expert") != expert:
         raise ExpertDataContractError("manifest expert does not match the requested expert")
     if tuple(payload.get("expert_raw_ids", ())) != EXPERT_RAW_IDS[expert]:
         raise ExpertDataContractError("manifest foreground IDs do not match the approved expert contract")
     dataset_policy = payload.get("dataset_policy")
-    if (
-        not isinstance(dataset_policy, dict)
-        or dataset_policy.get("dataset_jacky")
-        != "fourteen_source_groups_training_two_source_groups_validation"
-    ):
-        raise ExpertDataContractError("manifest must use the approved dataset_jacky source-group split")
-    if dataset_policy.get("dataset") != "excluded" or dataset_policy.get("dataset114") != "excluded":
-        raise ExpertDataContractError("only dataset_jacky may be present")
-    audit = payload.get("leakage_audit", {})
-    if audit.get("passed") is not True:
+    expected_policy = {
+        "dataset_jacky": "training_only_all_743_tiles",
+        "dataset115_filtered": "source_group_locked_train_validation_test",
+        "checkpoint_selection": "validation_only",
+        "test": "evaluate_once_after_checkpoint_selection",
+    }
+    if dataset_policy != expected_policy:
+        raise ExpertDataContractError("manifest dataset policy does not match the approved combined-data contract")
+    if payload.get("exclusion_policy") != "declared source groups are omitted before training partition assembly":
+        raise ExpertDataContractError("manifest exclusion policy does not match the approved contract")
+    if payload.get("leakage_audit", {}).get("passed") is not True:
         raise ExpertDataContractError("manifest leakage audit did not pass")
-    duplicate_audit = payload.get("duplicate_audit", {})
-    if duplicate_audit.get("passed") is not True or duplicate_audit.get("suspected_matches"):
+    if payload.get("duplicate_audit", {}).get("passed") is not True:
         raise ExpertDataContractError("manifest duplicate audit did not pass")
 
     partitions = {
         name: tuple(_validate_row(row, name) for row in payload.get(name, ()))
-        for name in ("training", "validation")
+        for name in PARTITIONS
     }
-    train, validation = partitions["training"], partitions["validation"]
-    if not train or not validation:
-        raise ExpertDataContractError("training and validation partitions must both be non-empty")
-    if any(row["dataset"] != "dataset_jacky" for row in (*train, *validation)):
-        raise ExpertDataContractError("training and validation must contain only dataset_jacky")
-    if not any(row["dataset"] == "dataset_jacky" for row in train):
-        raise ExpertDataContractError("training must include dataset_jacky")
+    train, validation, test = (partitions[name] for name in PARTITIONS)
+    if not train or not validation or not test:
+        raise ExpertDataContractError("training, validation, and test partitions must all be non-empty")
+    if sum(row["dataset"] == "dataset_jacky" for row in train) != 743:
+        raise ExpertDataContractError("training must contain all 743 dataset_jacky tiles")
+    if any(row["dataset"] == "dataset_jacky" for row in (*validation, *test)):
+        raise ExpertDataContractError("dataset_jacky may only appear in training")
+    if any(row["dataset"] != "dataset115_filtered" for row in (*validation, *test)):
+        raise ExpertDataContractError("validation and test must contain only dataset115_filtered")
+
+    expected_counts = EXPERT_PARTITION_COUNTS[expert]
+    actual_counts = tuple(len(partitions[name]) for name in PARTITIONS)
+    if actual_counts != expected_counts:
+        raise ExpertDataContractError(f"partition tile counts drifted: {actual_counts} != {expected_counts}")
+    actual_dataset115 = tuple(
+        sum(row["dataset"] == "dataset115_filtered" for row in partitions[name])
+        for name in PARTITIONS
+    )
+    if actual_dataset115 != EXPERT_DATASET115_COUNTS[expert]:
+        raise ExpertDataContractError("Dataset115 partition counts do not match the approved split")
+
     identities = {
         name: {(row["dataset"], row["tile"]) for row in rows}
         for name, rows in partitions.items()
@@ -165,20 +209,46 @@ def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDa
         name: {(row["dataset"], row["source_group"]) for row in rows}
         for name, rows in partitions.items()
     }
-    if identities["training"] & identities["validation"] or groups["training"] & groups["validation"]:
-        raise ExpertDataContractError("training/validation identity or source-group leakage")
-    if len(identities["training"]) != len(train) or len(identities["validation"]) != len(validation):
+    image_hashes = {
+        name: {row["image_sha256"] for row in rows}
+        for name, rows in partitions.items()
+    }
+    for left_index, left in enumerate(PARTITIONS):
+        for right in PARTITIONS[left_index + 1 :]:
+            if identities[left] & identities[right] or groups[left] & groups[right] or image_hashes[left] & image_hashes[right]:
+                raise ExpertDataContractError(f"{left}/{right} identity, source-group, or image leakage")
+    if any(len(identities[name]) != len(partitions[name]) for name in PARTITIONS):
         raise ExpertDataContractError("duplicate dataset-qualified tile identity")
-    expected_train, expected_validation = EXPERT_PARTITION_COUNTS[expert]
-    if (len(train), len(validation)) != (expected_train, expected_validation):
-        raise ExpertDataContractError("partition tile counts do not match the approved expert split")
-    if (len(groups["training"]), len(groups["validation"])) != (14, 2):
-        raise ExpertDataContractError("approved split requires fourteen training groups and two validation groups")
-    selected_groups = payload.get("selected_validation", {}).get("source_groups")
-    if not isinstance(selected_groups, list) or set(selected_groups) != {
-        row["source_group"] for row in validation
-    }:
-        raise ExpertDataContractError("selected validation groups do not match validation membership")
+
+    locked_groups = payload.get("locked_groups", {})
+    for name in ("validation", "test"):
+        expected_groups = {("dataset115_filtered", str(group)) for group in locked_groups.get(name, ())}
+        if groups[name] != expected_groups:
+            raise ExpertDataContractError(f"{name} groups do not match the locked split")
+    expected_excluded_groups = set(EXCLUDED_TRAINING_GROUPS[expert])
+    if set(str(group) for group in locked_groups.get("excluded_training", ())) != expected_excluded_groups:
+        raise ExpertDataContractError("excluded training groups do not match the approved contract")
+    excluded_training = payload.get("excluded_training", ())
+    if not isinstance(excluded_training, list):
+        raise ExpertDataContractError("excluded training membership must be a list")
+    if len(excluded_training) != EXPECTED_EXCLUDED_TRAINING_COUNTS[expert]:
+        raise ExpertDataContractError("excluded training tile count does not match the approved contract")
+    if any(
+        row.get("dataset") != "dataset115_filtered"
+        or row.get("source_group") not in expected_excluded_groups
+        for row in excluded_training
+    ):
+        raise ExpertDataContractError("excluded training membership contains an unapproved record")
+    excluded_identities = {
+        (str(row.get("dataset")), str(row.get("tile")))
+        for row in excluded_training
+    }
+    if len(excluded_identities) != len(excluded_training):
+        raise ExpertDataContractError("excluded training membership contains duplicate tiles")
+    if excluded_identities & set().union(*identities.values()):
+        raise ExpertDataContractError("excluded training tile was adopted into a partition")
+    if _canonical_hash(excluded_training) != payload.get("exclusion_sha256"):
+        raise ExpertDataContractError("excluded training membership hash mismatch")
 
     membership = {
         name: [{key: row[key] for key in ("dataset", "source_group", "tile")} for row in rows]
@@ -188,7 +258,7 @@ def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDa
         raise ExpertDataContractError("split membership hash mismatch")
     adopted_content = [
         {key: row[key] for key in ("dataset", "source_group", "tile", "image_sha256", "mask_sha256")}
-        for name in ("training", "validation")
+        for name in PARTITIONS
         for row in partitions[name]
     ]
     if _canonical_hash(adopted_content) != payload.get("adopted_dataset_sha256"):
@@ -200,8 +270,9 @@ def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDa
         total = 0
         for row in rows:
             with Image.open(row["mask"]) as mask_file:
-                mask = np.asarray(mask_file)
-            total += int(np.isin(mask, raw_ids).sum())
+                mask = torch.from_numpy(np.asarray(mask_file, dtype=np.uint8).copy())
+            target = make_expert_target(mask, raw_ids, row["mask_encoding"])
+            total += int((target == 1).sum())
         if total == 0:
             raise ExpertDataContractError(f"{expert} has no positive pixels in {name}")
         positive_pixels[name] = total
@@ -216,12 +287,25 @@ def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDa
         dataset_policy={str(key): str(value) for key, value in dataset_policy.items()},
         train=train,
         validation=validation,
+        test=test,
         partition_pixels=positive_pixels,
     )
 
 
-def make_expert_target(mask: Tensor, raw_ids: Sequence[int]) -> Tensor:
-    """Map a multiclass mask to one binary target while preserving ignore pixels."""
+def make_expert_target(
+    mask: Tensor,
+    raw_ids: Sequence[int],
+    mask_encoding: str = "class_index_uint8",
+) -> Tensor:
+    """Map either supported mask encoding to foreground 1/background 0/ignore 255."""
+
+    if mask_encoding == "binary_uint8_0_255":
+        values = set(int(value) for value in torch.unique(mask).tolist())
+        if not values.issubset({0, 255}):
+            raise ExpertDataContractError(f"binary mask contains invalid values: {sorted(values)}")
+        return (mask == 255).to(torch.long)
+    if mask_encoding != "class_index_uint8":
+        raise ExpertDataContractError(f"unsupported mask encoding {mask_encoding!r}")
     target = torch.zeros_like(mask, dtype=torch.long)
     for raw_id in raw_ids:
         target[mask == raw_id] = 1
@@ -259,8 +343,15 @@ def _augment_training_pair(image: np.ndarray, mask: np.ndarray) -> tuple[np.ndar
 
 
 class ExpertTileDataset(Dataset[dict[str, Tensor | str]]):
-    def __init__(self, rows: Sequence[Mapping[str, str]], *, train_augmentation: bool) -> None:
+    def __init__(
+        self,
+        rows: Sequence[Mapping[str, str]],
+        *,
+        raw_ids: Sequence[int],
+        train_augmentation: bool,
+    ) -> None:
         self.rows = tuple(rows)
+        self.raw_ids = tuple(raw_ids)
         self.train_augmentation = train_augmentation
 
     def __len__(self) -> int:
@@ -275,9 +366,10 @@ class ExpertTileDataset(Dataset[dict[str, Tensor | str]]):
         if self.train_augmentation:
             image, mask = _augment_training_pair(image, mask)
         image_tensor = torch.from_numpy(image).permute(2, 0, 1).float().div_(255.0)
+        mask_tensor = torch.from_numpy(mask.astype(np.int64, copy=False))
         return {
             "image": (image_tensor - _MEAN) / _STD,
-            "mask": torch.from_numpy(mask.astype(np.int64, copy=False)),
+            "target": make_expert_target(mask_tensor, self.raw_ids, row["mask_encoding"]),
             "name": f"{row['dataset']}__{row['tile']}",
             "dataset": row["dataset"],
             "source_group": row["source_group"],

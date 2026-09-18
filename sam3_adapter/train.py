@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import hashlib
 import json
 import os
@@ -23,28 +24,40 @@ from torch.utils.tensorboard import SummaryWriter
 
 from sam2_adapter.h0_core import load_trainable_state_dict, model_parameter_counts, trainable_state_dict
 from sam2_adapter.metrics import binary_summary, pixel_accuracy
-from sam2_adapter.reporting import EpochReporter, RunLayout, append_log, finalize_reporting, save_qualitative_example, write_json
+from sam2_adapter.reporting import (
+    EpochReporter,
+    RunLayout,
+    append_log,
+    binary_metric_row,
+    finalize_reporting,
+    save_qualitative_example,
+    write_json,
+)
 from sam2_adapter.runtime import _autocast, _batch_tensor, _git_revision, _package_versions, _seed_everything, _sha256
 from sam3_adapter.expert_training_data import (
     EXPERT_RAW_IDS,
     ExpertDataPlan,
     ExpertTileDataset,
     denormalize_image,
-    make_expert_target,
     prepare_expert_data_plan,
 )
-from sam3_adapter.losses import weighted_bce_dice_loss
+from sam3_adapter.losses import per_image_weighted_bce_dice_loss, weighted_bce_dice_loss
 from sam3_adapter.sam3_adapter_model import Sam3AdapterModel
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = PROJECT_ROOT.parent
-DEFAULT_MANIFEST_DIR = WORKSPACE_ROOT / "outputs" / "deterioration_statistics" / "jacky_experts"
+DEFAULT_MANIFEST_DIR = WORKSPACE_ROOT / "outputs" / "deterioration_statistics" / "sam3_experts"
 DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "segment-anything-3" / "checkpoints" / "sam3.pt"
-DEFAULT_EXPERIMENT = "2026-09-15_three-experts_sam3-adapter_jacky-high-positive-validation_seed42"
+DEFAULT_EXPERIMENT = "2026-09-16_three-experts_sam3-adapter-1008_jacky-dataset115_seed42"
 EXPERT_POSITIVE_WEIGHTS = {
     "scratch_crack": 1.0,
     "shrinkage_craquelure": 2.0,
-    "loss": 1.0,
+    "loss": 2.0,
+}
+EXPERT_DICE_REDUCTIONS = {
+    "scratch_crack": "batch_global",
+    "shrinkage_craquelure": "batch_global",
+    "loss": "positive_image_mean",
 }
 THRESHOLD = 0.5
 
@@ -79,12 +92,34 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     expected_positive_weight = EXPERT_POSITIVE_WEIGHTS[args.expert]
     if args.positive_weight is None:
         args.positive_weight = expected_positive_weight
+    args.dice_reduction = EXPERT_DICE_REDUCTIONS[args.expert]
+    args.loss_function = "bce_with_logits_plus_soft_dice"
+    args.empty_target_policy = (
+        "exclude_from_dice_include_in_bce"
+        if args.dice_reduction == "positive_image_mean"
+        else "include_in_batch_global_dice"
+    )
     if args.positive_weight != expected_positive_weight or args.dice_weight != 0.65:
         parser.error(
             f"loss contract for {args.expert} is locked to "
             f"positive_weight={expected_positive_weight} and dice_weight=0.65"
         )
     return args
+
+
+def _segmentation_loss(logits: Tensor, target: Tensor, args: argparse.Namespace) -> Tensor:
+    loss_function = (
+        per_image_weighted_bce_dice_loss
+        if args.dice_reduction == "positive_image_mean"
+        else weighted_bce_dice_loss
+    )
+    return loss_function(
+        logits,
+        target,
+        ignore_value=255,
+        positive_weight=args.positive_weight,
+        dice_weight=args.dice_weight,
+    )
 
 
 def _seed_worker(worker_id: int) -> None:
@@ -94,11 +129,17 @@ def _seed_worker(worker_id: int) -> None:
     np.random.seed(seed)
 
 
-def _loader(rows: Sequence[Mapping[str, str]], *, train: bool, args: argparse.Namespace) -> DataLoader:
+def _loader(
+    rows: Sequence[Mapping[str, str]],
+    *,
+    raw_ids: Sequence[int],
+    train: bool,
+    args: argparse.Namespace,
+) -> DataLoader:
     generator = torch.Generator().manual_seed(args.seed + (1 if train else 0))
     workers = min(args.num_workers, os.cpu_count() or 1)
     return DataLoader(
-        ExpertTileDataset(rows, train_augmentation=train),
+        ExpertTileDataset(rows, raw_ids=raw_ids, train_augmentation=train),
         batch_size=args.batch_size,
         shuffle=train,
         num_workers=workers,
@@ -139,6 +180,9 @@ def _evaluate(
     args: argparse.Namespace,
     device: torch.device,
     layout: RunLayout | None = None,
+    *,
+    collect_rows: bool = False,
+    split: str = "validation",
 ) -> dict[str, Any]:
     model.eval()
     loss_total = 0.0
@@ -149,37 +193,71 @@ def _evaluate(
     with torch.no_grad():
         for batch in loader:
             images = _batch_tensor(batch, "image", device)
-            target = make_expert_target(_batch_tensor(batch, "mask", device).long(), plan.raw_ids)
+            target = _batch_tensor(batch, "target", device).long()
             with _autocast(device, args.amp):
                 logits = model(images)
-                loss = weighted_bce_dice_loss(logits, target, ignore_value=255, positive_weight=args.positive_weight, dice_weight=args.dice_weight)
+                loss = _segmentation_loss(logits, target, args)
             loss_total += float(loss.cpu()) * images.shape[0]
             sample_count += images.shape[0]
             for index, source_group in enumerate(batch["source_group"]):
                 update = _counts(logits[index:index + 1], target[index:index + 1])
-                source_key = f"{batch['dataset'][index]}:{source_group}"
+                dataset_key = str(batch["dataset"][index])
+                source_key = f"{dataset_key}:{source_group}"
                 previous = source_counts.get(source_key, (0, 0, 0))
                 source_counts[source_key] = tuple(left + right for left, right in zip(previous, update, strict=True))
-                dataset_key = str(batch["dataset"][index])
                 previous = dataset_counts.get(dataset_key, (0, 0, 0))
                 dataset_counts[dataset_key] = tuple(left + right for left, right in zip(previous, update, strict=True))
+                target_array = (target[index] == 1).cpu().numpy()
+                prediction_array = (torch.sigmoid(logits[index, 0]) >= THRESHOLD).cpu().numpy()
                 if layout is not None:
                     rgb = denormalize_image(images[index]).permute(1, 2, 0).mul(255).round().byte().numpy()
-                    rows.append(save_qualitative_example(
+                    row = save_qualitative_example(
                         layout,
                         image_id=str(batch["name"][index]),
                         input_rgb=rgb,
-                        target=(target[index] == 1).cpu().numpy(),
-                        prediction=(torch.sigmoid(logits[index, 0]) >= THRESHOLD).cpu().numpy(),
+                        target=target_array,
+                        prediction=prediction_array,
                         target_class=plan.expert,
-                    ))
+                    )
+                    row.update({"dataset": dataset_key, "source_group": str(source_group)})
+                    rows.append(row)
+                elif collect_rows:
+                    row = binary_metric_row(target_array, prediction_array)
+                    row.update(
+                        {
+                            "image": str(batch["name"][index]),
+                            "split": split,
+                            "target_class": plan.expert,
+                            "dataset": dataset_key,
+                            "source_group": str(source_group),
+                        }
+                    )
+                    rows.append(row)
     summary = binary_summary(source_counts)
     return {
         "loss": loss_total / sample_count,
         **summary,
-        "by_dataset": {dataset: binary_summary({dataset: counts})["tile_micro"] for dataset, counts in sorted(dataset_counts.items())},
+        "by_dataset": {
+            dataset: binary_summary({dataset: counts})["tile_micro"]
+            for dataset, counts in sorted(dataset_counts.items())
+        },
+        "by_source": {
+            source: binary_summary({source: counts})["tile_micro"]
+            for source, counts in sorted(source_counts.items())
+        },
         "per_image_rows": rows,
     }
+
+
+def _write_csv(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
+    if not rows:
+        raise ValueError(f"refusing to write empty metrics CSV: {path}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fieldnames = list(rows[0])
+    with path.open("w", encoding="utf-8", newline="") as stream:
+        writer = csv.DictWriter(stream, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
 
 
 def _train_epoch(
@@ -196,15 +274,9 @@ def _train_epoch(
     sample_count = 0
     for batch_index, batch in enumerate(loader, 1):
         images = _batch_tensor(batch, "image", device)
-        target = make_expert_target(_batch_tensor(batch, "mask", device).long(), plan.raw_ids)
+        target = _batch_tensor(batch, "target", device).long()
         with _autocast(device, args.amp):
-            loss = weighted_bce_dice_loss(
-                model(images),
-                target,
-                ignore_value=255,
-                positive_weight=args.positive_weight,
-                dice_weight=args.dice_weight,
-            )
+            loss = _segmentation_loss(model(images), target, args)
         (loss / args.accumulation_steps).backward()
         if batch_index % args.accumulation_steps == 0 or batch_index == len(loader):
             torch.nn.utils.clip_grad_norm_(
@@ -260,7 +332,7 @@ def _write_metadata(layout: RunLayout, model: Sam3AdapterModel, plan: ExpertData
         "target_mask_resize": "none",
         "logit_resize_to_metric_size": "bilinear; align_corners=false",
         "selection_metric": "maximum validation pixel-micro F1 at threshold 0.5; lower validation loss breaks ties",
-        "selection_scope": "expert-specific dataset_jacky source-group validation; no outer test",
+        "selection_scope": "Dataset115 validation only; Dataset115 test evaluated once after checkpoint selection",
         "threshold": THRESHOLD,
         "epochs": args.epochs,
         "effective_batch_size": args.batch_size * args.accumulation_steps,
@@ -314,10 +386,20 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
     model = _build_model(args, device)
     checkpoint_hash = _sha256(args.checkpoint)
     _write_metadata(layout, model, plan, args, checkpoint_hash)
-    optimizer = AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=args.learning_rate, weight_decay=args.weight_decay)
+    optimizer = AdamW(
+        (parameter for parameter in model.parameters() if parameter.requires_grad),
+        lr=args.learning_rate,
+        weight_decay=args.weight_decay,
+    )
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0.0)
-    train_loader = _loader(plan.train, train=True, args=args)
-    validation_loader = _loader(plan.validation, train=False, args=args)
+    train_loader = _loader(plan.train, raw_ids=plan.raw_ids, train=True, args=args)
+    validation_loader = _loader(plan.validation, raw_ids=plan.raw_ids, train=False, args=args)
+    test_loader = _loader(plan.test, raw_ids=plan.raw_ids, train=False, args=args)
+    print(
+        f"{args.expert} training_started train={len(plan.train)} "
+        f"validation={len(plan.validation)} test={len(plan.test)}",
+        flush=True,
+    )
     writer = SummaryWriter(log_dir=str(layout.tensorboard))
     reporter = EpochReporter(layout.metrics / "epochs.csv", writer)
     best_f1, best_loss, best_epoch, finalized = float("-inf"), float("inf"), 0, False
@@ -327,7 +409,12 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
             train_loss = _train_epoch(model, train_loader, optimizer, plan, args, device)
             validation = _evaluate(model, validation_loader, plan, args, device)
             micro = validation["tile_micro"]
-            accuracy = pixel_accuracy(int(micro["tp"]), int(micro["fp"]), int(micro["fn"]), len(plan.validation) * IMAGE_PIXELS)
+            accuracy = pixel_accuracy(
+                int(micro["tp"]),
+                int(micro["fp"]),
+                int(micro["fn"]),
+                len(plan.validation) * IMAGE_PIXELS,
+            )
             reporter.record(
                 epoch,
                 train_loss=train_loss,
@@ -367,14 +454,48 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
                 checkpoint_hash,
                 plan,
             )
-            message = f"epoch={epoch}/{args.epochs} train_loss={train_loss:.6f} val_loss={current_loss:.6f} val_f1={current_f1:.4f} best_f1={best_f1:.4f} best_epoch={best_epoch}"
+            message = (
+                f"epoch={epoch}/{args.epochs} train_loss={train_loss:.6f} "
+                f"val_loss={current_loss:.6f} val_f1={current_f1:.4f} "
+                f"best_f1={best_f1:.4f} best_epoch={best_epoch}"
+            )
             print(f"{args.expert} {message}", flush=True)
             append_log(layout, message)
             scheduler.step()
+
         payload = torch.load(layout.checkpoints / "best.pt", map_location="cpu", weights_only=False)
         load_trainable_state_dict(model, payload["adaptation_state"])
         selected = _evaluate(model, validation_loader, plan, args, device, layout)
-        write_json(layout.metrics / "selected_validation_metrics.json", {key: value for key, value in selected.items() if key != "per_image_rows"})
+        selected_metrics = {key: value for key, value in selected.items() if key != "per_image_rows"}
+        write_json(layout.metrics / "selected_validation_metrics.json", selected_metrics)
+
+        outer = _evaluate(
+            model,
+            test_loader,
+            plan,
+            args,
+            device,
+            collect_rows=True,
+            split="test",
+        )
+        outer_rows = outer.pop("per_image_rows")
+        per_image_path = layout.metrics / "outer_test_per_image.csv"
+        per_source_path = layout.metrics / "outer_test_per_source.csv"
+        _write_csv(per_image_path, outer_rows)
+        source_rows = [
+            {"source_group": source, **metrics}
+            for source, metrics in outer["by_source"].items()
+        ]
+        _write_csv(per_source_path, source_rows)
+        outer_record = {
+            "scope": "outer_test_not_used_for_checkpoint_or_threshold_selection",
+            "selected_checkpoint": "artifacts/checkpoints/best.pt",
+            "selected_epoch": best_epoch,
+            "threshold": THRESHOLD,
+            **outer,
+            "per_image_metrics": "metrics/outer_test_per_image.csv",
+            "per_source_metrics": "metrics/outer_test_per_source.csv",
+        }
         write_json(layout.metrics / "experiment_summary.json", {
             "status": "completed",
             "expert": args.expert,
@@ -383,8 +504,9 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
             "best_validation_f1": best_f1,
             "validation_loss_at_best_f1": best_loss,
             "validation_datasets": sorted({row["dataset"] for row in plan.validation}),
+            "test_datasets": sorted({row["dataset"] for row in plan.test}),
             "dataset_policy": dict(plan.dataset_policy),
-            "outer_test_skipped": True,
+            "outer_test_excluded_from_selection": True,
             "peak_allocated_mib": torch.cuda.max_memory_allocated(device) / 1024**2,
             "peak_reserved_mib": torch.cuda.max_memory_reserved(device) / 1024**2,
         })
@@ -394,7 +516,7 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
             reporter=reporter,
             validation_rows=selected["per_image_rows"],
             selected_epoch=best_epoch,
-            outer_test_metrics={"status": "outer_test_skipped", "reason": "no independent outer-test dataset is available"},
+            outer_test_metrics=outer_record,
         )
         finalized = True
         append_log(layout, f"completed selected_epoch={best_epoch}")
@@ -417,19 +539,13 @@ def smoke_test(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.dev
         lr=args.learning_rate,
         weight_decay=args.weight_decay,
     )
-    batch = next(iter(_loader(plan.train, train=True, args=args)))
+    batch = next(iter(_loader(plan.train, raw_ids=plan.raw_ids, train=True, args=args)))
     images = _batch_tensor(batch, "image", device)
-    target = make_expert_target(_batch_tensor(batch, "mask", device).long(), plan.raw_ids)
+    target = _batch_tensor(batch, "target", device).long()
     torch.cuda.reset_peak_memory_stats(device)
     with _autocast(device, args.amp):
         logits = model(images)
-        loss = weighted_bce_dice_loss(
-            logits,
-            target,
-            ignore_value=255,
-            positive_weight=args.positive_weight,
-            dice_weight=args.dice_weight,
-        )
+        loss = _segmentation_loss(logits, target, args)
     if logits.shape != (args.batch_size, 1, 512, 512) or not torch.isfinite(loss):
         raise RuntimeError(f"invalid smoke output: logits={tuple(logits.shape)}, loss={loss}")
     loss.backward()
@@ -476,16 +592,24 @@ def main(argv: list[str] | None = None) -> int:
         smoke_test(args, plan, device)
         return 0
     info = PROJECT_ROOT / "runs" / args.experiment_id / "info"
-    write_json(info / "experiment.json", {
-        "schema_version": 1,
+    experiment_path = info / "experiment.json"
+    recorded_experts: set[str] = set()
+    if experiment_path.is_file():
+        existing = json.loads(experiment_path.read_text(encoding="utf-8"))
+        if existing.get("experiment_id") != args.experiment_id:
+            raise ValueError(f"experiment metadata mismatch: {experiment_path}")
+        recorded_experts.update(str(expert) for expert in existing.get("experts", ()))
+    recorded_experts.add(args.expert)
+    write_json(experiment_path, {
+        "schema_version": 2,
         "experiment_id": args.experiment_id,
-        "experts": list(EXPERT_RAW_IDS),
+        "experts": [expert for expert in EXPERT_RAW_IDS if expert in recorded_experts],
         "fold_count": 1,
         "manifest_directory": str(args.manifest.parent),
         "dataset_sha256": plan.dataset_sha256,
         "dataset_policy": dict(plan.dataset_policy),
         "split_contracts": "expert-specific; see <expert>_dataset_contract.json",
-        "selection_boundary": "two complete dataset_jacky groups per expert; remaining fourteen groups train; outer test skipped",
+        "selection_boundary": "all Jacky tiles train; Dataset115 source-group-locked validation selects checkpoint; Dataset115 test evaluated once afterward",
         "created_at": datetime.now().astimezone().isoformat(),
     })
     write_json(info / f"{args.expert}_dataset_contract.json", plan.record())

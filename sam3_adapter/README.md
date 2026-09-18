@@ -48,7 +48,7 @@ server 安裝 `nvcc`。
 ```text
 segment-anything-2/checkpoints/sam2.1_hiera_large.pt
 segment-anything-3/checkpoints/sam3.pt
-outputs/deterioration_statistics/jacky_experts/
+outputs/deterioration_statistics/sam3_experts/
 訓練使用的 dataset 目錄
 ```
 
@@ -86,22 +86,39 @@ Probe 使用舊的 929-tile nested 5-fold comparison contract。`train_probe.py`
 
 ## 三個正式 SAM3-Adapter experts
 
-目前正式 contract 只使用 `dataset_jacky` 的 743 張 tiles；每位 expert 各保留兩個完整 source groups 作 validation，其餘 14 組作 training。三份 manifest 分開保存，禁止同一幅畫跨 partition。先建立與驗證 split：
+目前 contract 將 `dataset_jacky` 的 743 張 tiles 全部作 training，並將
+`dataset115_filtered` 依完整 `source_group` 分成 training、validation、
+test。龜裂專家明確排除 `KYT-SC-1R-2LB1-1` 的 62 張 training tiles。
+禁止同一幅原圖的 tiles 跨 partition；checkpoint 只依 validation
+pixel-micro F1 選擇，test 只在選定 checkpoint 後評估一次。
+
+先建立與驗證 split：
 
 ```bash
-./crackseg_env/bin/python -m scripts.data.prepare_jacky_expert_splits
+./crackseg_env/bin/python -m scripts.data.prepare_sam3_expert_splits
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert scratch_crack --validate-data-only
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert shrinkage_craquelure --validate-data-only
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --validate-data-only
 ```
 
-三位 expert 必須分開執行；每個 run 寫入 `runs/<experiment_id>/1fold/<expert>/fold0/`。正式 1008 model-input 指令：
+三位 expert 必須分開執行；每個 run 寫入
+`runs/<experiment_id>/1fold/<expert>/fold0/`。正式 1008 model-input 指令：
 
 ```bash
-EXPERIMENT=2026-09-15_three-experts_sam3-adapter-1008_jacky-high-positive-validation_seed42
+EXPERIMENT=2026-09-16_three-experts_sam3-adapter-1008_jacky-dataset115_seed42
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert scratch_crack --model-input-size 1008 --experiment-id "$EXPERIMENT"
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert shrinkage_craquelure --model-input-size 1008 --experiment-id "$EXPERIMENT"
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --model-input-size 1008 --experiment-id "$EXPERIMENT"
+```
+
+2026-09-17 龜裂專家移除 `KYT-SC-1R-2LB1-1` 後的 60-epoch run：
+
+```bash
+EXPERIMENT=2026-09-17_craquelure-sam3-adapter-1008_no-kyt-2lb1_epochs60_seed42
+PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train \
+  --expert shrinkage_craquelure --model-input-size 1008 \
+  --epochs 60 --batch-size 2 --accumulation-steps 2 \
+  --experiment-id "$EXPERIMENT"
 ```
 
 ### 訓練設定
@@ -109,37 +126,72 @@ PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --model-i
 | 項目 | 設定 |
 |---|---|
 | source tile／GT／metric size | `512 × 512` |
-| model input | 正式 run 使用 `1008`（CLI 亦保留 direct-512 ablation） |
+| model input | 正式 run 使用 `1008` |
 | RGB `512 → 1008` | bicubic、`align_corners=False`、`antialias=True`，結果 clamp 至 `[0, 1]` |
 | mask resize | 不 resize；90° 旋轉與翻轉使用離散 `np.rot90`／`np.flip` |
 | decoder logits | bilinear、`align_corners=False` 回到 `512 × 512` |
-| loss | foreground-weighted BCE + `0.65 ×` soft Dice |
-| BCE positive weight | `shrinkage_craquelure=2.0`；`scratch_crack=1.0`；`loss=1.0` |
-| optimizer | AdamW，learning rate `2e-4`，weight decay `5e-5` |
-| scheduler | CosineAnnealingLR，`T_max=80`，每 epoch 更新 |
-| epochs／effective batch | `80`／`4` |
+| loss | `scratch_crack`／`shrinkage_craquelure`：foreground-weighted BCE + `0.65 ×` batch-global soft Dice；`loss`：foreground-weighted BCE + `0.65 ×` positive-image-mean soft Dice |
+| BCE positive weight | `shrinkage_craquelure=2.0`；`scratch_crack=1.0`；`loss=2.0` |
+| `loss` empty-target policy | 空 GT 不納入 Dice，但仍納入 BCE 以懲罰假陽性 |
+| scheduler | CosineAnnealingLR，`T_max` 跟隨 `--epochs`，每 epoch 更新 |
+| epochs／effective batch | 正式三專家 run 為 `80`／`4`；移除 KYT-2LB1 的龜裂重訓為 `60`／`4` |
 | gradient clipping／AMP | `1.0`／啟用 |
 | seed／prediction threshold | `42`／`0.5` |
-| checkpoint selection | validation BCE + Dice loss 最低 |
+| checkpoint selection | validation pixel-micro F1 最高；F1 相同時選 validation loss 較低者 |
+| outer test | 選定 `best.pt` 後執行一次，不參與選模 |
 
-Training manifests 位於 `outputs/deterioration_statistics/jacky_experts/{scratch_crack,shrinkage_craquelure,loss}.json`。各 expert 的 training／validation 張數分別為 `601/142`、`605/138`、`588/155`；兩側皆只含 `dataset_jacky`，`dataset` 與 Dataset114 排除。`scratch_crack` 因 Jacky 沒有 Scratch 標註，實際 supervision 僅使用 Crack ID 1。沒有 outer-test，輸出明列 `outer_test_skipped`。
+Training manifests 位於
+`outputs/deterioration_statistics/sam3_experts/{scratch_crack,shrinkage_craquelure,loss}.json`。
+三位 expert 的 training／validation／test 張數分別為
+`1241/105/112`、`1081/123/192`、`1243/108/107`。龜裂 training 中
+Dataset115 為 338 張，另明確排除 `KYT-SC-1R-2LB1-1` 的 62 張。
+Training 包含全部
+Jacky tiles 與各 expert 核准的 Dataset115 training groups；validation/test
+只含 Dataset115。`scratch_crack` 的 Jacky supervision 只有 Crack ID 1，
+Dataset115 supervision 則合併 D-01 Crack 與 D-11 Scratch。
 
-Training augmentation 使用同步的 0°／90°／180°／270° 旋轉及水平／垂直翻轉。RGB 另套用 brightness、contrast、gamma `0.85–1.15` 與每通道 gain `0.95–1.05`。不加入雜訊、blur、任意角度旋轉或 mask morphology。
+Training augmentation 使用同步的 0°／90°／180°／270° 旋轉及水平／垂直翻轉。
+RGB 另套用 brightness、contrast、gamma `0.85–1.15` 與每通道 gain
+`0.95–1.05`。不加入雜訊、blur、任意角度旋轉或 mask morphology。
 
-1008 model-input 的三位 expert 均已通過完整 optimizer-step smoke test：forward、loss、backward、gradient clipping 與 optimizer step；輸出 logits 均為 `4 × 1 × 512 × 512`，peak allocated VRAM `25548.84 MiB`、peak reserved VRAM `26132 MiB`。
+### 2026-09-16 正式結果
 
-### 2026-09-15 正式結果
-
-Experiment ID：`2026-09-15_three-experts_sam3-adapter-1008_jacky-high-positive-validation_seed42`
+Experiment ID：`2026-09-16_three-experts_sam3-adapter-1008_jacky-best-f1_seed42`
 
 | expert | selected epoch | validation loss | pixel-micro F1 | pixel-micro IoU | panel-macro F1 |
 |---|---:|---:|---:|---:|---:|
-| `loss` | 2 | 0.4066 | 0.5688 | 0.3974 | 0.5568 |
-| `shrinkage_craquelure` | 27 | 0.5224 | 0.7451 | 0.5938 | 0.5385 |
-| `scratch_crack` | 1 | 0.3516 | 0.4820 | 0.3175 | 0.4295 |
+| `loss` | 35 | 0.5099 | 0.7031 | 0.5422 | 0.7030 |
+| `shrinkage_craquelure` | 56 | 0.6130 | 0.7498 | 0.5997 | 0.5210 |
+| `scratch_crack` | 4 | 0.3821 | 0.4981 | 0.3317 | 0.4397 |
 
-三個 run 都有明顯 train/validation gap；checkpoint 僅依 validation loss 選擇。不同 expert 使用不同 validation 畫作，分數只適合各自解讀，不是同一測試集上的直接排名。
+`best.pt` 只依固定 threshold `0.5` 的 validation pixel-micro F1 選擇。不同 expert 使用不同 validation 畫作，分數只適合各自解讀，不是同一測試集上的直接排名。
+
+### Dataset 純推論
+
+以下指令依序載入三個 F1-selected `best.pt`，對 `dataset` 的 456 張圖片推論；不讀 GT、不訓練、不計算評估指標：
+
+```bash
+PYTHONPATH=. ./sam3_env/bin/python -m scripts.evaluation.infer_sam3_experts
+```
+
+輸出位於 `runs/2026-09-16_three-experts_sam3-adapter-1008_jacky-best-f1_seed42/inference/dataset/`。每個 expert 包含 456 張二值 mask、456 張 overlay 和一份含輸入／checkpoint／輸出 SHA-256 的 `manifest.csv`。
+
+### Dataset115 三專家評估
+
+以下指令以三個 F1-selected `best.pt` 對 `dataset115_filtered` 的 715 張 tiles
+及各 expert binary GT 作完整評估：
+
+```bash
+PYTHONPATH=. ./sam3_env/bin/python -m scripts.evaluation.evaluate_sam3_experts_dataset115
+```
+
+評估固定使用 1008 model input、512 metric resolution、threshold `0.5`。
+`scratch_crack`、`shrinkage_craquelure`、`loss` 的 GT 分別為
+`D-01 ∪ D-11`、`D-03 ∪ D-04`、`D-02`。輸出包含每類 prediction masks、
+逐圖 metrics、完整 qualitative panels，以及 pixel macro/micro F1 和
+1-pixel tolerance boundary macro/micro F1；預設位於
+`runs/2026-09-16_three-experts_sam3-adapter-1008_jacky-best-f1_seed42/inference/dataset115_filtered/`。
 
 ## 產物
 
-Probe 歷史結果位於 `runs/2026-08-26_sam2-sam3-native-probe-adapter_seed42/`。本次 1008 三專家結果位於 `runs/2026-09-15_three-experts_sam3-adapter-1008_jacky-high-positive-validation_seed42/`；每位 expert 的 checkpoint、TensorBoard PNG、CSV 與 HTML 報告位於 `1fold/<expert>/fold0/`。被中斷或暫停的舊目錄以 `fold0_interrupted_*`／`fold0_paused_*` 保留，不屬於正式結果。
+Probe 歷史結果位於 `runs/2026-08-26_sam2-sam3-native-probe-adapter_seed42/`。本次 F1-selected 1008 三專家結果位於 `runs/2026-09-16_three-experts_sam3-adapter-1008_jacky-best-f1_seed42/`；每位 expert 的 checkpoint、TensorBoard PNG、CSV 與 HTML 報告位於 `1fold/<expert>/fold0/`，純推論結果位於 `inference/dataset/`。
