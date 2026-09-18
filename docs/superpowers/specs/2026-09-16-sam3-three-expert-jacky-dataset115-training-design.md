@@ -15,23 +15,24 @@
 1. `dataset_jacky` 全部 743 tiles 必須進入每位 expert 的 training。
 2. `dataset115_filtered` 以 `source_group` 為不可拆分單位。
 3. `dataset115_filtered` 的任何 tile、`source_group` 或原圖不得跨 training、validation、test。
-4. `shrinkage_craquelure` test 必須包含：
+4. `shrinkage_craquelure` validation 必須包含 `KJWTomh-PH-M-1RB1-1`，test 必須包含：
    - `KJWTomh-MH-M-A3E-2`
-   - `KJWTomh-PH-M-1RB1-1`
    - `KYT-SC-1R-A9-4`
-5. `scratch_crack` test 必須包含：
+   - `KJWTomh-MH-M-A3E-3-2`
+5. `shrinkage_craquelure` training 必須排除完整 source group `KYT-SC-1R-2LB1-1`。
+6. `scratch_crack` test 必須包含：
    - `KJWTomh-MH-M-A3E-2`
    - `KJWTomh-MH-M-A6'-2`
-6. `loss` test 必須包含 `MST-SC-M-A2-2-7`。
-7. `loss` training 必須包含 `KJWTomh-SC-M-A7'-1`。
-8. `dataset_jacky` 不得出現在 validation 或 test。
-9. Test 資料不得參與 checkpoint、epoch、threshold 或超參數選擇。
+7. `loss` test 必須包含 `MST-SC-M-A2-2-7`。
+8. `loss` training 必須包含 `KJWTomh-SC-M-A7'-1`。
+9. `dataset_jacky` 不得出現在 validation 或 test。
+10. Test 資料不得參與 checkpoint、epoch、threshold 或超參數選擇。
 
 ## 比例決策
 
 比例以 Dataset115 tile 數計算，並保持 `source_group` 完整。一般目標為最接近 70% training、15% validation、15% test。
 
-`shrinkage_craquelure` 的三個指定 test groups 已有 152 tiles，占 Dataset115 的 21.26%。因此它不可能同時維持 70/15/15。核准決策為保留約 15% validation，使 Dataset115 training 接受降至 63.78%；加入 Jacky 後仍有 1,199 張 training tiles。
+`shrinkage_craquelure` 依 2026-09-17 核准的 domain split，將 `KJWTomh-PH-M-1RB1-1` 從 test 移到 validation，將 `KJWTomh-MH-M-A3E-3-2` 從 training 移到 test，並從 training 完整排除 `KYT-SC-1R-2LB1-1` 的 62 張 tiles。以 Dataset115 全部 715 張為分母，training、excluded、validation、test 分別為 47.27%、8.67%、17.20%、26.85%。
 
 ## 鎖定切分
 
@@ -39,11 +40,12 @@
 
 | Partition | Dataset115 tiles | 比例 | 正樣本 tiles | Source groups |
 |---|---:|---:|---:|---|
-| training | 456 | 63.78% | 174 | 除 validation/test 外的全部 groups |
-| validation | 107 | 14.97% | 45 | `KJWTomh-MH-M-A3E-1`、`WFT-PH-M-1LB1-1-1` |
-| test | 152 | 21.26% | 116 | `KJWTomh-MH-M-A3E-2`、`KJWTomh-PH-M-1RB1-1`、`KYT-SC-1R-A9-4` |
+| training | 338 | 47.27% | 83 | 除 validation/test/excluded 外的全部 groups |
+| validation | 123 | 17.20% | 56 | `KJWTomh-MH-M-A3E-1`、`WFT-PH-M-1LB1-1-1`、`KJWTomh-PH-M-1RB1-1` |
+| test | 192 | 26.85% | 151 | `KJWTomh-MH-M-A3E-2`、`KYT-SC-1R-A9-4`、`KJWTomh-MH-M-A3E-3-2` |
+| excluded | 62 | 8.67% | 45 | `KYT-SC-1R-2LB1-1` |
 
-加入 Jacky 後 training 共 1,199 tiles。
+加入 Jacky 後 training 共 1,081 tiles；排除群組不進入任何 partition。
 
 ### scratch_crack
 
@@ -149,6 +151,7 @@ Dataset loader 依 `mask_encoding` 轉成統一 target：有效背景 0、有效
 - learning rate：2e-4
 - weight decay：5e-5
 - scheduler：CosineAnnealingLR，`T_max=80`
+- 2026-09-17 移除 `KYT-SC-1R-2LB1-1` 的龜裂重訓例外：epochs 60、`T_max=60`
 - gradient clipping：1.0
 - AMP：啟用
 - seed：42
@@ -164,7 +167,7 @@ Dataset loader 依 `mask_encoding` 轉成統一 target：有效背景 0、有效
 1. validation pixel-micro F1 較高；
 2. F1 完全相同時，validation loss 較低。
 
-80 epochs 結束後：
+指定 epochs 結束後：
 
 1. 載入 `best.pt`；
 2. 重新計算 selected validation metrics 與全部 validation qualitative artifacts；
