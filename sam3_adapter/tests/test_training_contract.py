@@ -29,12 +29,19 @@ def test_adapter_has_independent_expert_specific_loss_contracts() -> None:
     assert scratch.manifest.name == "scratch_crack.json"
     assert craquelure.manifest.name == "shrinkage_craquelure.json"
     assert loss.manifest.name == "loss.json"
-    assert "jacky-high-positive-validation" in scratch.experiment_id
-    assert (scratch.positive_weight, craquelure.positive_weight, loss.positive_weight) == (1.0, 2.0, 1.0)
+    assert "jacky-dataset115" in scratch.experiment_id
+    assert (scratch.positive_weight, craquelure.positive_weight, loss.positive_weight) == (1.0, 2.0, 2.0)
+    assert (scratch.dice_reduction, craquelure.dice_reduction, loss.dice_reduction) == (
+        "batch_global",
+        "batch_global",
+        "positive_image_mean",
+    )
     assert craquelure.model_input_size == 512
     assert parse_train_args(["--expert", "shrinkage_craquelure", "--model-input-size", "1008"]).model_input_size == 1008
     with pytest.raises(SystemExit):
         parse_train_args(["--expert", "scratch_crack", "--positive-weight", "2"])
+    with pytest.raises(SystemExit):
+        parse_train_args(["--expert", "loss", "--positive-weight", "1"])
     with pytest.raises(SystemExit):
         parse_probe_args(["--group", "sam3_adapter"])
 
@@ -43,6 +50,12 @@ def test_expert_target_uses_available_crack_label_and_preserves_ignore() -> None
     mask = torch.tensor([[0, 1, 2, 11, 36, 255]])
     target = make_expert_target(mask, (1,))
     assert target.tolist() == [[0, 1, 0, 0, 0, 255]]
+
+
+def test_dataset115_binary_foreground_is_not_treated_as_ignore() -> None:
+    mask = torch.tensor([[0, 255, 255, 0]])
+    target = make_expert_target(mask, (3, 4), "binary_uint8_0_255")
+    assert target.tolist() == [[0, 1, 1, 0]]
 
 
 def test_checkpoint_selection_maximizes_f1_then_minimizes_loss() -> None:
