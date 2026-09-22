@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from sam3_adapter.expert_training_data import ExpertTileDataset
+from sam3_adapter.training_data import ExpertTileDataset
 from scripts.data.prepare_combined_expert_splits import _actual_path
 
 

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import random
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
@@ -14,6 +13,8 @@ import torch
 from PIL import Image
 from torch import Tensor
 from torch.utils.data import Dataset
+
+from sam3_adapter.data_augmentation import augment_training_pair
 
 IMAGE_SIZE = 512
 IGNORE_VALUE = 255
@@ -30,10 +31,6 @@ EXPERT_DATASET_RAW_IDS: dict[str, dict[str, tuple[int, ...]]] = {
 }
 _MEAN = torch.tensor((0.485, 0.456, 0.406), dtype=torch.float32).view(3, 1, 1)
 _STD = torch.tensor((0.229, 0.224, 0.225), dtype=torch.float32).view(3, 1, 1)
-_BRIGHTNESS_RANGE = (0.85, 1.15)
-_CONTRAST_RANGE = (0.85, 1.15)
-_GAMMA_RANGE = (0.85, 1.15)
-_CHANNEL_GAIN_RANGE = (0.95, 1.05)
 _REQUIRED_ROW_KEYS = {
     "dataset",
     "source_group",
@@ -323,33 +320,6 @@ def make_expert_target(mask: Tensor, raw_ids: Sequence[int]) -> Tensor:
     return target
 
 
-def _photometric_augment(image: np.ndarray) -> np.ndarray:
-    """Apply conservative RGB-only intensity and color variation."""
-
-    values = image.astype(np.float32) / 255.0
-    mean = values.mean(axis=(0, 1), keepdims=True)
-    values = (values - mean) * random.uniform(*_CONTRAST_RANGE) + mean
-    values *= random.uniform(*_BRIGHTNESS_RANGE)
-    values = np.clip(values, 0.0, 1.0) ** random.uniform(*_GAMMA_RANGE)
-    channel_gains = np.asarray(
-        [random.uniform(*_CHANNEL_GAIN_RANGE) for _ in range(3)],
-        dtype=np.float32,
-    ).reshape(1, 1, 3)
-    return np.rint(np.clip(values * channel_gains, 0.0, 1.0) * 255.0).astype(np.uint8)
-
-
-def _augment_training_pair(image: np.ndarray, mask: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
-    """Apply exact shared geometry and RGB-only photometric augmentation."""
-
-    quarter_turns = random.randrange(4)
-    if quarter_turns:
-        image = np.rot90(image, quarter_turns, axes=(0, 1)).copy()
-        mask = np.rot90(mask, quarter_turns, axes=(0, 1)).copy()
-    if random.random() < 0.5:
-        image, mask = np.flip(image, axis=1).copy(), np.flip(mask, axis=1).copy()
-    if random.random() < 0.5:
-        image, mask = np.flip(image, axis=0).copy(), np.flip(mask, axis=0).copy()
-    return _photometric_augment(image), mask
 
 
 class ExpertTileDataset(Dataset[dict[str, Tensor | str]]):
@@ -378,7 +348,7 @@ class ExpertTileDataset(Dataset[dict[str, Tensor | str]]):
                 with Image.open(path) as mask_file:
                     mask[np.asarray(mask_file) > 0] = 1
         if self.train_augmentation:
-            image, mask = _augment_training_pair(image, mask)
+            image, mask = augment_training_pair(image, mask)
         image_tensor = torch.from_numpy(image).permute(2, 0, 1).float().div_(255.0)
         return {
             "image": (image_tensor - _MEAN) / _STD,

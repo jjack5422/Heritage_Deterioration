@@ -1,27 +1,137 @@
-# SAM3 probes 與 SAM3-Adapter 訓練
+# SAM3-Adapter 三專家訓練工作流
 
-本資料夾把兩種用途分成獨立入口：`train_probe.py` 只重現 SAM2/SAM3 frozen-backbone probe 比較；`train.py` 只訓練三個可選 512／1008 model input 的 SAM3-Adapter 劣化專家，loss 與 metrics 固定回到 512×512。
+本目錄負責訓練、驗證與匯出三個獨立的二元劣化分割專家：
 
-## 組別
+- `scratch_crack`：裂縫／刮痕
+- `loss`：缺失／磨損
+- `shrinkage_craquelure`：皺縮／龜裂
 
-| 組別 | Backbone | Adapter | Segmentation head |
-|---|---|---|---|
-| A | frozen SAM2.1 Hiera-L | 無 | 共用 prompt-free FPN probe |
-| B | frozen SAM3 | 無 | 與 A 完全相同的 probe |
-| C | SAM2.1 Hiera-L | 既有 SAM2-Adapter | 既有 native SAM2 mask decoder |
-| D | frozen SAM3 | 官方 SAM3-Adapter | SAM-family pretrained mask decoder |
+每個 expert 都輸出一張 foreground/background mask。原始 tile、ground truth、loss 與 metrics 固定在 `512 × 512` 空間；正式 transfer 訓練直接使用 512 model input，CLI 另保留 bicubic 放大到 1008 的 ablation。
 
-A 對 B 是 backbone 表徵比較；C 對 D 是完整系統比較，後者不能單獨歸因於 backbone。
+## 核心原則
 
-注意：官方可驗證的 SAM3 發布目前只有約 4.55 億參數的 ViT（SAM2 Hiera-L 約 2.13 億）；沒有同等預訓練的 SAM3 小型 checkpoint。因此 A/B 控制共同 probe 與所有訓練／資料條件，但不是等參數量比較，這項限制已寫入 `spec.md` 與比較報告。
+- 三個 experts 分開訓練、分開保存 checkpoint。
+- `dataset_jacky` 的 743 張 tiles 全部只用於 training。
+- Validation 與 outer test 只使用 `dataset115_filtered` 的固定 source groups。
+- 同一來源影像的 tiles 不得跨 training、validation、test。
+- Checkpoint 只依 validation pixel-micro F1 選擇；F1 相同時選 validation loss 較低者。
+- Outer test 不得參與 epoch、checkpoint 或 threshold 選擇。
+- Prediction threshold 固定為 `0.5`。
+- Mask 不做連續插值；model logits 才以 bilinear 回到 `512 × 512`。
+- 每次正式 run 都必須保存設定、資料 hash、環境、checkpoints、metrics、TensorBoard exports、qualitative images 與靜態 HTML 報告。
 
-## 實驗室 server 環境安裝
+## 完整資料流
 
-以下指令從 repository 根目錄執行。Python 套件由根目錄
-`requirements.txt` 共用；PyTorch 因 CUDA wheel 必須符合目標 server
-的 NVIDIA driver，所以獨立安裝。
+```text
+dataset_jacky/ + dataset115_filtered/
+                │
+                ▼
+scripts/data/prepare_transfer_expert_splits.py
+建立三份固定 split manifests
+                │
+                ▼
+sam3_adapter/training_data.py
+驗證檔案、hash、split、leakage、positive pixels
+讀取 RGB / mask 並建立 binary target
+                │
+                ▼
+sam3_adapter/data_augmentation.py
+只對 training 套用同步幾何與 RGB augmentation
+                │
+                ▼
+sam3_adapter/model.py
+建立 SAM3-Adapter、載入 base checkpoint
+執行 direct-512 或 bicubic 512→1008 preprocessing
+                │
+                ▼
+sam3_adapter/loss_functions.py
+foreground-weighted BCE + soft Dice
+                │
+                ▼
+sam3_adapter/train.py
+training → validation → best checkpoint → outer test → reports
+                │
+                ▼
+sam3_adapter/export_test_results.py
+逐張 outer-test 四聯圖、CSV、HTML gallery 與 metrics 核對
+```
 
-精確重現目前已驗證的 PyTorch 2.11.0／CUDA 12.8 環境：
+## 程式檔案與修改位置
+
+| 要修改的內容 | 檔案 |
+|---|---|
+| 原始資料來源、expert label IDs、source-group split | `scripts/data/prepare_transfer_expert_splits.py`、`scripts/data/prepare_combined_expert_splits.py` |
+| Manifest contract、Dataset、binary target、normalization | `sam3_adapter/training_data.py` |
+| Rotation、flip、brightness、contrast、gamma、channel gain | `sam3_adapter/data_augmentation.py` |
+| SAM3-Adapter、checkpoint mapping、凍結範圍、512／1008 preprocessing | `sam3_adapter/model.py` |
+| BCE／Dice loss 公式 | `sam3_adapter/loss_functions.py` |
+| Hyperparameter defaults、optimizer、scheduler、train/validation/test loop | `sam3_adapter/train.py` |
+| Outer-test 四聯圖、逐圖 CSV、HTML gallery | `sam3_adapter/export_test_results.py` |
+| Windows 完整流程 launcher | `scripts/training/run_transfer_experts_512.ps1` |
+
+一次性 hyperparameter 實驗應優先使用 `train.py --help` 列出的 CLI 參數；只有要改變專案預設 contract 時才修改原始碼。
+
+## Expert 標籤定義
+
+| Expert | `dataset_jacky` foreground IDs | `dataset115_filtered` foreground IDs |
+|---|---|---|
+| `scratch_crack` | `1` | `1, 11` |
+| `loss` | `2` | `2` |
+| `shrinkage_craquelure` | `3, 4` | `3, 4` |
+
+Runtime target 統一為：
+
+```text
+0   = background
+1   = 目前 expert 的 foreground
+255 = ignore pixel，不參與 loss 或 metrics
+```
+
+支援兩種 manifest mask 格式：
+
+- `class_index`：單張 mask 儲存 raw class ID。
+- `binary_multilabel`：多張 binary masks 取 union，形成 expert foreground。
+
+## 固定資料切分
+
+Manifest 位置：
+
+```text
+outputs/deterioration_statistics/transfer_512/
+├─ scratch_crack.json
+├─ loss.json
+└─ shrinkage_craquelure.json
+```
+
+目前固定 tile 數：
+
+| Expert | Training | Validation | Outer test | Unused holdout |
+|---|---:|---:|---:|---:|
+| `scratch_crack` | 1241 | 105 | 112 | 0 |
+| `loss` | 1243 | 108 | 107 | 0 |
+| `shrinkage_craquelure` | 1081 | 123 | 142 | 112 |
+
+`shrinkage_craquelure` outer test 只使用兩個 KYT source groups，並採用 7-pixel D-04 ground truth。確切 source groups、tile membership、hashes 與處理規則見 `DATASET_SPLIT_TRANSFER.md`。
+
+`training_data.py` 在 CUDA 初始化前完整驗證：
+
+- manifest schema 與 expert 是否相符；
+- foreground IDs 與 dataset policy；
+- image/mask 是否存在且 SHA-256 相符；
+- image/mask 是否為 `512 × 512`；
+- class-index mask 是否只包含已知 raw IDs；
+- binary mask 是否只包含 `0/255`；
+- partition tile 數與 positive-pixel 數；
+- tile identity 與 source-group leakage；
+- split、dataset 與 adopted-content hashes。
+
+任一條件失敗即停止，不會開始訓練。
+
+## 環境安裝
+
+以下指令都從 repository 根目錄執行。PyTorch CUDA wheel 必須符合 server NVIDIA driver；其餘套件使用根目錄 `requirements.txt`。
+
+已驗證的 Linux server 組合為 Python 3.12、PyTorch 2.11.0、CUDA 12.8：
 
 ```bash
 nvidia-smi
@@ -36,111 +146,396 @@ python -m pip install --no-deps -e ./segment-anything-3
 python -m pip check
 ```
 
-若 server driver 不支援 CUDA 12.8，請從
-[PyTorch Get Started](https://pytorch.org/get-started/locally/) 取得該
-server 適用的 `torch`／`torchvision` 安裝指令，只替換上述 PyTorch
-步驟。其餘 pinned dependencies 維持不變。`SAM2_BUILD_CUDA=0` 避免安裝
-不影響目前 Adapter 訓練的 SAM2 post-processing extension，因此不要求
-server 安裝 `nvcc`。
+若 driver 不支援 CUDA 12.8，只替換 PyTorch／torchvision 安裝步驟。`segment-anything-2` 在這裡提供共用 checkpoint、metrics、runtime 與 reporting helper；不需要 SAM2 checkpoint。
 
-必須一併傳送：
+必要檔案：
 
 ```text
-segment-anything-2/checkpoints/sam2.1_hiera_large.pt
 segment-anything-3/checkpoints/sam3.pt
-outputs/deterioration_statistics/combined_experts/
 dataset_jacky/
 dataset115_filtered/
 ```
 
-完整訓練最後依賴
-`$HOME/.codex/skills/training-output-reporting/scripts/` 產生 TensorBoard
-PNG、CSV 與 HTML dashboard。移機時必須一併複製目前工作站的
-`~/.codex/skills/training-output-reporting/`。
+Reporting scripts 優先從以下位置載入：
 
-安裝後先執行：
+```text
+~/.codex/skills/training-output-reporting/scripts/
+```
+
+若該目錄不存在，會使用 repository 內建版本：
+
+```text
+scripts/reporting/training_output_reporting/
+```
+
+安裝後確認環境：
 
 ```bash
-PYTHONPATH=. python -c "import torch; import sam2; import sam3; import sam2_adapter.train_adapter; import sam3_adapter.train; print({'torch': torch.__version__, 'wheel_cuda': torch.version.cuda, 'cuda_available': torch.cuda.is_available(), 'gpu': torch.cuda.get_device_name(0) if torch.cuda.is_available() else None})"
+PYTHONPATH=. python -c "import torch; import sam3; import sam3_adapter.train; print({'torch': torch.__version__, 'wheel_cuda': torch.version.cuda, 'cuda_available': torch.cuda.is_available(), 'gpu': torch.cuda.get_device_name(0) if torch.cuda.is_available() else None})"
 PYTHONPATH=. python -m sam3_adapter.train --help
-PYTHONPATH=. python -m sam3_adapter.train \
-  --expert loss --validate-data-only
+PYTHONPATH=. python -m sam3_adapter.export_test_results --help
 ```
 
-資料驗證通過後，在正式長時間訓練前執行單一 optimizer-step：
+正式訓練需要 `torch.cuda.is_available() == True`。
+
+## 一鍵執行完整流程（Windows）
+
+PowerShell launcher 預設執行：
+
+1. 重建三份 manifests；
+2. 驗證三份 manifests；
+3. 對三個 experts 各執行一個 optimizer-step smoke test；
+4. 依序訓練三個 experts；
+5. 完成 validation、outer-test 與標準報告；
+6. 匯出逐張 outer-test gallery。
+
+```powershell
+.\scripts\training\run_transfer_experts_512.ps1 `
+  -ExperimentId 2026-09-20_transfer-512_seed42 `
+  -PythonPath .\adapter_env\Scripts\python.exe
+```
+
+只重建並驗證資料，不初始化 CUDA：
+
+```powershell
+.\scripts\training\run_transfer_experts_512.ps1 `
+  -PythonPath .\adapter_env\Scripts\python.exe `
+  -ValidateOnly
+```
+
+已有其他方式完成 GPU smoke test時，可略過 launcher 的 smoke stage：
+
+```powershell
+.\scripts\training\run_transfer_experts_512.ps1 `
+  -ExperimentId <new-experiment-id> `
+  -PythonPath .\adapter_env\Scripts\python.exe `
+  -SkipSmokeTest
+```
+
+Launcher 和 `train.py` 都拒絕覆寫已存在的 `fold0`。每個正式實驗必須使用新的 `ExperimentId`，或先明確處理既有 run；不要直接覆蓋舊結果。
+
+## 手動執行流程
+
+### 1. 建立 manifests
+
+```bash
+PYTHONPATH=. python -m scripts.data.prepare_transfer_expert_splits
+```
+
+如果目標 manifest 已存在但內容不同，程式會拒絕覆寫，避免無意改變正式 split。
+
+### 2. 驗證三個 experts
+
+```bash
+PYTHONPATH=. python -m sam3_adapter.train --expert scratch_crack --validate-data-only
+PYTHONPATH=. python -m sam3_adapter.train --expert loss --validate-data-only
+PYTHONPATH=. python -m sam3_adapter.train --expert shrinkage_craquelure --validate-data-only
+```
+
+這個 stage 不需要 CUDA。
+
+### 3. 執行 optimizer-step smoke test
 
 ```bash
 PYTHONPATH=. python -m sam3_adapter.train \
-  --expert loss --model-input-size 1008 --smoke-test
+  --expert scratch_crack \
+  --model-input-size 512 \
+  --smoke-test
 ```
 
+三個 experts 都應各執行一次。Smoke test 覆蓋：
 
-## Probe 比較重現
+- DataLoader 與 augmentation；
+- model forward；
+- loss；
+- backward；
+- trainable parameters 是否都有 gradient；
+- gradient clipping；
+- optimizer step；
+- logits shape 是否為 `B × 1 × 512 × 512`。
+
+Smoke test 不建立正式 run 目錄。
+
+### 4. 正式訓練
 
 ```bash
-source /home/jacky/project/sam3_env/bin/activate
-PYTHONPATH=. python -m sam3_adapter.train_probe --group sam2_probe --folds 0 1 2 3 4 --batch-size 4 --accumulation-steps 1 --num-workers 4 --experiment-id 2026-08-26_sam2-sam3-native-probe-adapter_seed42
-PYTHONPATH=. python -m sam3_adapter.train_probe --group sam3_probe --folds 0 1 2 3 4 --batch-size 4 --accumulation-steps 1 --num-workers 4 --experiment-id 2026-08-26_sam2-sam3-native-probe-adapter_seed42
+EXPERIMENT=2026-09-20_transfer-512_seed42
+
+PYTHONPATH=. python -m sam3_adapter.train \
+  --expert scratch_crack \
+  --model-input-size 512 \
+  --experiment-id "$EXPERIMENT"
+
+PYTHONPATH=. python -m sam3_adapter.train \
+  --expert loss \
+  --model-input-size 512 \
+  --experiment-id "$EXPERIMENT"
+
+PYTHONPATH=. python -m sam3_adapter.train \
+  --expert shrinkage_craquelure \
+  --model-input-size 512 \
+  --experiment-id "$EXPERIMENT"
 ```
 
-Probe 使用舊的 929-tile nested 5-fold comparison contract。`train_probe.py` 不接受 `sam3_adapter`。
+每個 expert 寫入：
 
-## 三個正式 SAM3-Adapter experts
+```text
+sam3_adapter/runs/<experiment_id>/1fold/<expert>/fold0/
+```
 
-目前 contract 合併 `dataset_jacky` 的 743 張 tiles 與 `dataset115_filtered` 的 715 張 tiles。每位 expert 以完整原圖為單位建立約 70/15/15 的 training／validation／test；`dataset_jacky` 不得進 test，而 `dataset115_filtered` 三者皆可。三份 manifest 分開保存，禁止同一原圖的 tiles 跨 partition。先建立與驗證 split：
+### 5. 從既有 best checkpoint補完報告
+
+如果 epochs 已完成且 `best.pt`、`metrics/epochs.csv` 存在，但最後 evaluation/reporting 被中斷，可執行：
 
 ```bash
-./crackseg_env/bin/python -m scripts.data.prepare_combined_expert_splits
-PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert scratch_crack --validate-data-only
-PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert shrinkage_craquelure --validate-data-only
-PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --validate-data-only
+PYTHONPATH=. python -m sam3_adapter.train \
+  --expert <expert> \
+  --model-input-size 512 \
+  --experiment-id <experiment-id> \
+  --finalize-only
 ```
 
-三位 expert 必須分開執行；每個 run 寫入 `runs/<experiment_id>/1fold/<expert>/fold0/`。正式 1008 model-input 指令：
+`--finalize-only` 不重新訓練；它重新載入 best checkpoint，完成 selected-validation、outer-test 與靜態報告。
+
+### 6. 匯出逐張 outer-test 結果
+
+全部 experts：
 
 ```bash
-EXPERIMENT=2026-09-15_three-experts_sam3-adapter-1008_jacky-high-positive-validation_seed42
-PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert scratch_crack --model-input-size 1008 --experiment-id "$EXPERIMENT"
-PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert shrinkage_craquelure --model-input-size 1008 --experiment-id "$EXPERIMENT"
-PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --model-input-size 1008 --experiment-id "$EXPERIMENT"
+PYTHONPATH=. python -m sam3_adapter.export_test_results \
+  --experiment-id "$EXPERIMENT"
 ```
 
-### 訓練設定
+只匯出指定 expert，可重複提供 `--expert`：
 
-| 項目 | 設定 |
-|---|---|
-| source tile／GT／metric size | `512 × 512` |
-| model input | 正式 run 使用 `1008`（CLI 亦保留 direct-512 ablation） |
-| RGB `512 → 1008` | bicubic、`align_corners=False`、`antialias=True`，結果 clamp 至 `[0, 1]` |
-| mask resize | 不 resize；90° 旋轉與翻轉使用離散 `np.rot90`／`np.flip` |
-| decoder logits | bilinear、`align_corners=False` 回到 `512 × 512` |
-| loss | foreground-weighted BCE + `0.65 ×` soft Dice |
-| BCE positive weight | `shrinkage_craquelure=2.0`；`scratch_crack=1.0`；`loss=1.0` |
-| optimizer | AdamW，learning rate `2e-4`，weight decay `5e-5` |
-| scheduler | CosineAnnealingLR，`T_max=60`，每 epoch 更新 |
-| epochs／effective batch | `60`／`4` |
-| gradient clipping／AMP | `1.0`／啟用 |
-| seed／prediction threshold | `42`／`0.5` |
-| checkpoint selection | validation BCE + Dice loss 最低 |
+```bash
+PYTHONPATH=. python -m sam3_adapter.export_test_results \
+  --experiment-id "$EXPERIMENT" \
+  --expert loss \
+  --expert scratch_crack
+```
 
-Training manifests 位於 `outputs/deterioration_statistics/combined_experts/{scratch_crack,shrinkage_craquelure,loss}.json`。三位 expert 均為 training／validation／test = `1020/219/219`（69.96%／15.02%／15.02%）。test 只取自 `dataset115_filtered`，並在 tile 數最接近 15% 的候選中最大化對應劣化前景比例；`loss` 的 `KJWTomh-SC-M-A7'-1` 強制留在 training。`scratch_crack` 在 Jacky 使用 ID 1，在 dataset115 使用 ID 1 與 11。outer test 只在 validation 選定 checkpoint 後評估，不參與選模。
+Exporter 會確認：
 
-Training augmentation 使用同步的 0°／90°／180°／270° 旋轉及水平／垂直翻轉。RGB 另套用 brightness、contrast、gamma `0.85–1.15` 與每通道 gain `0.95–1.05`。不加入雜訊、blur、任意角度旋轉或 mask morphology。
+- training/reporting status 已完成；
+- checkpoint expert、selected epoch、dataset hash 與 split hash 相符；
+- 重新推論得到的 TP/FP/FN 與 `outer_test_metrics.json` 完全一致。
 
-1008 model-input 的三位 expert 均已通過完整 optimizer-step smoke test：forward、loss、backward、gradient clipping 與 optimizer step；輸出 logits 均為 `4 × 1 × 512 × 512`，peak allocated VRAM `25548.84 MiB`、peak reserved VRAM `26132 MiB`。
+## 模型與前處理
 
-### 2026-09-15 正式結果
+`training_data.py` 輸出 ImageNet-normalized `B × 3 × 512 × 512` tensor。`model.py` 在 forward 中先還原成 `[0,1]` RGB，再依 `--model-input-size` 處理：
 
-Experiment ID：`2026-09-15_three-experts_sam3-adapter-1008_jacky-high-positive-validation_seed42`
+### Direct 512（正式設定）
 
-| expert | selected epoch | validation loss | pixel-micro F1 | pixel-micro IoU | panel-macro F1 |
-|---|---:|---:|---:|---:|---:|
-| `loss` | 2 | 0.4066 | 0.5688 | 0.3974 | 0.5568 |
-| `shrinkage_craquelure` | 27 | 0.5224 | 0.7451 | 0.5938 | 0.5385 |
-| `scratch_crack` | 1 | 0.3516 | 0.4820 | 0.3175 | 0.4295 |
+```text
+512 RGB → SAM3-Adapter → logits bilinear 回到 512
+```
 
-三個 run 都有明顯 train/validation gap；checkpoint 僅依 validation loss 選擇。不同 expert 使用不同 validation 畫作，分數只適合各自解讀，不是同一測試集上的直接排名。
+作者 runtime 原本依 1008 grid 建立 global-attention RoPE。Direct-512 模式會重新建立對應 512 patch grid 的非參數 RoPE buffers，並同步 decoder embedding size；checkpoint 權重本身不被修改。
 
-## 產物
+### 1008 ablation
 
-Probe 歷史結果位於 `runs/2026-08-26_sam2-sam3-native-probe-adapter_seed42/`。本次 1008 三專家結果位於 `runs/2026-09-15_three-experts_sam3-adapter-1008_jacky-high-positive-validation_seed42/`；每位 expert 的 checkpoint、TensorBoard PNG、CSV 與 HTML 報告位於 `1fold/<expert>/fold0/`。被中斷或暫停的舊目錄以 `fold0_interrupted_*`／`fold0_paused_*` 保留，不屬於正式結果。
+```text
+512 RGB
+  → bicubic resize 1008
+  → align_corners=False
+  → antialias=True
+  → clamp [0,1]
+  → SAM3-Adapter
+  → logits bilinear 回到 512
+```
+
+Ground-truth mask始終維持 512，不做 resize。
+
+### 可訓練範圍
+
+- SAM3 image encoder 主幹凍結；
+- image encoder 內的 `prompt_generator` 可訓練；
+- active SAM-family mask decoder path 可訓練；
+- 未使用的 IoU/object-score heads 凍結；
+- PromptGenerator 未被 forward 使用的末端 MLP 凍結。
+
+Checkpoint 只保存 trainable adaptation state，並記錄 base checkpoint SHA-256、dataset hash、split hash、selected epoch 與 validation 指標。
+
+## Data augmentation
+
+只對 training 套用；validation 與 outer test 不做 augmentation。
+
+幾何變換會同步作用於 image 和 mask：
+
+- 隨機 `0° / 90° / 180° / 270°` 旋轉；
+- 50% 水平翻轉；
+- 50% 垂直翻轉。
+
+只作用於 RGB image 的 photometric augmentation：
+
+- brightness：`0.85–1.15`；
+- contrast：`0.85–1.15`；
+- gamma：`0.85–1.15`；
+- 每通道 gain：`0.95–1.05`。
+
+目前不使用雜訊、blur、任意角度旋轉、elastic transform 或 mask morphology。
+
+## Loss 與訓練設定
+
+Loss：
+
+```text
+foreground-weighted BCE + 0.65 × soft Dice
+```
+
+Expert-specific BCE positive weight：
+
+| Expert | Positive weight |
+|---|---:|
+| `scratch_crack` | 1.0 |
+| `loss` | 1.0 |
+| `shrinkage_craquelure` | 2.0 |
+
+其他預設設定：
+
+| 項目 | 預設值 |
+|---|---:|
+| Model input size | 512 |
+| Epochs | 60 |
+| Batch size | 4 |
+| Gradient accumulation | 1 |
+| Effective batch size | 4，固定 contract |
+| Learning rate | `2e-4` |
+| Weight decay | `5e-5` |
+| Optimizer | AdamW |
+| Scheduler | CosineAnnealingLR，`T_max=epochs` |
+| Gradient clipping | `1.0` |
+| AMP | 啟用 |
+| Seed | 42 |
+| Prediction threshold | 0.5 |
+
+`--positive-weight` 必須符合 expert contract，`--dice-weight` 必須為 `0.65`，且 `batch-size × accumulation-steps` 必須等於 4；不符合時 CLI 直接拒絕執行。
+
+## Checkpoint selection 與評估
+
+每個 epoch 都計算 validation loss 與 pixel-micro segmentation metrics。Best checkpoint規則：
+
+1. validation pixel-micro F1 較高者優先；
+2. F1 完全相同時，validation loss 較低者優先。
+
+訓練結束後：
+
+1. 載入 `best.pt`；
+2. 重新評估 selected validation；
+3. 保存所有 validation images 的 Input、GT、Prediction、Overlay；
+4. 在 outer test 上計算一次正式 metrics；
+5. 產生 TensorBoard scalar/image exports；
+6. 建立 Best 20、Worst 20 與完整 HTML dashboard。
+
+四聯圖順序固定為：
+
+```text
+Input | Ground Truth | Prediction | Overlay
+```
+
+## Run 輸出結構
+
+```text
+sam3_adapter/runs/<experiment_id>/
+├─ info/
+│  ├─ experiment.json
+│  └─ <expert>_dataset_contract.json
+└─ 1fold/
+   └─ <expert>/
+      └─ fold0/
+         ├─ config/
+         │  ├─ args.json
+         │  ├─ dataset.json
+         │  ├─ environment.json
+         │  ├─ model.json
+         │  └─ run.json
+         ├─ logs/
+         │  └─ train.log
+         ├─ metrics/
+         │  ├─ epochs.csv
+         │  ├─ selected_validation_metrics.json
+         │  ├─ per_image_validation.csv
+         │  ├─ outer_test_metrics.json
+         │  ├─ experiment_summary.json
+         │  └─ tensorboard_scalars.csv
+         ├─ artifacts/
+         │  ├─ checkpoints/
+         │  │  ├─ best.pt
+         │  │  └─ last.pt
+         │  └─ qualitative/
+         ├─ tensorboard/
+         │  ├─ events.out.tfevents.*
+         │  └─ images/
+         │     ├─ manifest.csv
+         │     ├─ loss_curve.png
+         │     ├─ best/
+         │     └─ worst/
+         ├─ reports/
+         │  ├─ index.html
+         │  ├─ best_20.html
+         │  └─ worst_20.html
+         └─ test_inference/
+            ├─ index.html
+            ├─ per_image_test.csv
+            └─ images/
+```
+
+## 結果檢查順序
+
+訓練完成後建議依序查看：
+
+1. `tensorboard/images/loss_curve.png`：train/validation loss 是否收斂或分離；
+2. `reports/index.html`：selected epoch、metrics 與整體報告；
+3. `reports/best_20.html`：表現最佳的 validation examples；
+4. `reports/worst_20.html`：最需要人工檢查的 failure cases；
+5. `test_inference/index.html`：逐張 outer-test prediction；
+6. `metrics/outer_test_metrics.json`：正式 outer-test aggregate；
+7. `test_inference/per_image_test.csv`：逐圖 F1、precision、recall、IoU、TP、FP、FN 與 error reason。
+
+Overlay 顏色：GT 為紅色、prediction 為青色、重疊區域呈紫色。
+
+## 測試
+
+在具備完整 requirements 的環境執行目前三專家相關測試：
+
+```bash
+PYTHONPATH=. python -m pytest -q \
+  sam3_adapter/tests/test_training_augmentation.py \
+  sam3_adapter/tests/test_combined_expert_data.py \
+  sam3_adapter/tests/test_training_contract.py \
+  sam3_adapter/tests/test_transfer_split_contract.py
+```
+
+修改資料、augmentation、loss、hyperparameters 或 model preprocessing 後，至少重新執行：
+
+1. 對應的 focused tests；
+2. 三個 experts 的 `--validate-data-only`；
+3. 三個 experts 的 `--smoke-test`；
+4. 使用新 `ExperimentId` 的正式訓練。
+
+## 常見失敗
+
+### `CUDA is required`
+
+目前 Python 環境未安裝 CUDA-enabled PyTorch，或 NVIDIA driver／wheel 不相容。先檢查：
+
+```bash
+python -c "import torch; print(torch.__version__, torch.version.cuda, torch.cuda.is_available())"
+```
+
+### `refusing to overwrite existing run`
+
+相同 experiment/expert 的 `fold0` 已存在。正式新實驗應使用新的 `--experiment-id`，不要覆寫舊 artifacts。
+
+### `checkpoint and test manifest do not match`
+
+Checkpoint 記錄的 dataset/split hash 與目前 manifest 不一致。應使用該 checkpoint 原本的 manifest，或以新 manifest 重新訓練；不要繞過 hash 檢查。
+
+### `training/reporting is incomplete`
+
+尚未產生完整 `experiment_summary.json` 或 `outer_test_metrics.json`。若 epochs 已完成，可用 `--finalize-only` 補完。
+
+### `effective batch size must equal 4`
+
+調整 `--batch-size` 時必須同步調整 `--accumulation-steps`，使乘積維持 4。

@@ -16,7 +16,7 @@ from PIL import Image
 from sam2_adapter.h0_core import load_trainable_state_dict
 from sam2_adapter.reporting import _mask_rgb, _overlay_rgb, binary_metric_row
 from sam2_adapter.runtime import _autocast, _batch_tensor, _seed_everything
-from sam3_adapter.expert_training_data import denormalize_image, prepare_expert_data_plan
+from sam3_adapter.training_data import denormalize_image, prepare_expert_data_plan
 from sam3_adapter.train import _build_model, _loader, parse_args
 
 

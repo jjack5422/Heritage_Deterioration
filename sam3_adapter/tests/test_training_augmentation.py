@@ -4,7 +4,7 @@ import random
 
 import numpy as np
 
-from sam3_adapter.expert_training_data import _augment_training_pair
+from sam3_adapter.data_augmentation import augment_training_pair
 
 
 def test_quarter_turn_rotates_image_and_mask_without_interpolation(monkeypatch) -> None:
@@ -14,7 +14,7 @@ def test_quarter_turn_rotates_image_and_mask_without_interpolation(monkeypatch) 
     monkeypatch.setattr(random, "random", lambda: 1.0)
     monkeypatch.setattr(random, "uniform", lambda low, high: 1.0)
 
-    augmented_image, augmented_mask = _augment_training_pair(image, mask)
+    augmented_image, augmented_mask = augment_training_pair(image, mask)
 
     np.testing.assert_array_equal(augmented_image, np.rot90(image, 1))
     np.testing.assert_array_equal(augmented_mask, np.rot90(mask, 1))
@@ -29,7 +29,7 @@ def test_photometric_augmentation_never_changes_mask(monkeypatch) -> None:
     monkeypatch.setattr(random, "random", lambda: 1.0)
     monkeypatch.setattr(random, "uniform", lambda low, high: next(factors))
 
-    augmented_image, augmented_mask = _augment_training_pair(image, mask)
+    augmented_image, augmented_mask = augment_training_pair(image, mask)
 
     np.testing.assert_array_equal(augmented_image, np.full_like(image, 170))
     np.testing.assert_array_equal(augmented_mask, mask)

@@ -19,33 +19,44 @@ from torch import Tensor, nn
 from torch.optim import AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR
 from torch.utils.data import DataLoader
-from torch.utils.tensorboard import SummaryWriter
 
 from sam2_adapter.h0_core import load_trainable_state_dict, model_parameter_counts, trainable_state_dict
 from sam2_adapter.metrics import binary_summary, pixel_accuracy
 from sam2_adapter.reporting import EpochReporter, RunLayout, append_log, finalize_reporting, save_qualitative_example, write_json
 from sam2_adapter.runtime import _autocast, _batch_tensor, _git_revision, _package_versions, _seed_everything, _sha256
-from sam3_adapter.expert_training_data import (
+from sam3_adapter.training_data import (
     EXPERT_RAW_IDS,
     ExpertDataPlan,
     ExpertTileDataset,
     denormalize_image,
     prepare_expert_data_plan,
 )
-from sam3_adapter.losses import weighted_bce_dice_loss
-from sam3_adapter.sam3_adapter_model import Sam3AdapterModel
+from sam3_adapter.loss_functions import weighted_bce_dice_loss
+from sam3_adapter.model import Sam3AdapterModel
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = PROJECT_ROOT.parent
-DEFAULT_MANIFEST_DIR = WORKSPACE_ROOT / "outputs" / "deterioration_statistics" / "combined_experts"
+DEFAULT_MANIFEST_DIR = WORKSPACE_ROOT / "outputs" / "deterioration_statistics" / "transfer_512"
 DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "segment-anything-3" / "checkpoints" / "sam3.pt"
-DEFAULT_EXPERIMENT = "2026-09-16_three-experts_sam3-adapter_two-dataset-70-15-15_seed42"
+DEFAULT_EXPERIMENT = "2026-09-20_transfer-512_seed42"
+DEFAULT_MODEL_INPUT_SIZE = 512
+DEFAULT_EPOCHS = 60
+DEFAULT_BATCH_SIZE = 4
+DEFAULT_ACCUMULATION_STEPS = 1
+DEFAULT_NUM_WORKERS = 4
+DEFAULT_LEARNING_RATE = 2e-4
+DEFAULT_WEIGHT_DECAY = 5e-5
+DEFAULT_DICE_WEIGHT = 0.65
+DEFAULT_GRADIENT_CLIP = 1.0
+DEFAULT_SEED = 42
+DEFAULT_AMP = True
+EFFECTIVE_BATCH_SIZE = 4
+PREDICTION_THRESHOLD = 0.5
 EXPERT_POSITIVE_WEIGHTS = {
     "scratch_crack": 1.0,
     "shrinkage_craquelure": 2.0,
     "loss": 1.0,
 }
-THRESHOLD = 0.5
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -53,19 +64,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--expert", choices=tuple(EXPERT_RAW_IDS), required=True)
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
-    parser.add_argument("--model-input-size", type=int, choices=(512, 1008), default=512)
-    parser.add_argument("--epochs", type=int, default=60)
-    parser.add_argument("--batch-size", type=int, default=4)
-    parser.add_argument("--accumulation-steps", type=int, default=1)
-    parser.add_argument("--num-workers", type=int, default=4)
-    parser.add_argument("--learning-rate", type=float, default=2e-4)
-    parser.add_argument("--weight-decay", type=float, default=5e-5)
-    parser.add_argument("--dice-weight", type=float, default=0.65)
+    parser.add_argument("--model-input-size", type=int, choices=(512, 1008), default=DEFAULT_MODEL_INPUT_SIZE)
+    parser.add_argument("--epochs", type=int, default=DEFAULT_EPOCHS)
+    parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
+    parser.add_argument("--accumulation-steps", type=int, default=DEFAULT_ACCUMULATION_STEPS)
+    parser.add_argument("--num-workers", type=int, default=DEFAULT_NUM_WORKERS)
+    parser.add_argument("--learning-rate", type=float, default=DEFAULT_LEARNING_RATE)
+    parser.add_argument("--weight-decay", type=float, default=DEFAULT_WEIGHT_DECAY)
+    parser.add_argument("--dice-weight", type=float, default=DEFAULT_DICE_WEIGHT)
     parser.add_argument("--positive-weight", type=float, help="必須符合 expert 的核准 BCE positive weight")
-    parser.add_argument("--gradient-clip", type=float, default=1.0)
-    parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--gradient-clip", type=float, default=DEFAULT_GRADIENT_CLIP)
+    parser.add_argument("--seed", type=int, default=DEFAULT_SEED)
     parser.add_argument("--experiment-id", default=DEFAULT_EXPERIMENT)
-    parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
+    parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=DEFAULT_AMP)
     parser.add_argument("--smoke-test", action="store_true", help="Run one complete optimizer step without writing a run.")
     parser.add_argument("--finalize-only", action="store_true", help="Finalize validation/test/reporting from an existing best checkpoint.")
     parser.add_argument("--validate-data-only", action="store_true", help="Validate the full manifest and exit before CUDA initialization.")
@@ -74,15 +85,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     args.checkpoint = args.checkpoint.resolve()
     if args.epochs <= 0:
         parser.error("epochs must be positive")
-    if args.batch_size * args.accumulation_steps != 4:
-        parser.error("effective batch size must equal 4")
+    if args.batch_size * args.accumulation_steps != EFFECTIVE_BATCH_SIZE:
+        parser.error(f"effective batch size must equal {EFFECTIVE_BATCH_SIZE}")
     expected_positive_weight = EXPERT_POSITIVE_WEIGHTS[args.expert]
     if args.positive_weight is None:
         args.positive_weight = expected_positive_weight
-    if args.positive_weight != expected_positive_weight or args.dice_weight != 0.65:
+    if args.positive_weight != expected_positive_weight or args.dice_weight != DEFAULT_DICE_WEIGHT:
         parser.error(
             f"loss contract for {args.expert} is locked to "
-            f"positive_weight={expected_positive_weight} and dice_weight=0.65"
+            f"positive_weight={expected_positive_weight} and dice_weight={DEFAULT_DICE_WEIGHT}"
         )
     return args
 
@@ -129,7 +140,7 @@ def _counts(logits: Tensor, target: Tensor) -> tuple[int, int, int]:
     if target.ndim == 3:
         target = target.unsqueeze(1)
     valid = target != 255
-    prediction = (torch.sigmoid(logits) >= THRESHOLD) & valid
+    prediction = (torch.sigmoid(logits) >= PREDICTION_THRESHOLD) & valid
     actual = (target == 1) & valid
     return tuple(int(value.item()) for value in ((prediction & actual).sum(), (prediction & ~actual).sum(), (~prediction & actual).sum()))
 
@@ -172,7 +183,7 @@ def _evaluate(
                         image_id=str(batch["name"][index]),
                         input_rgb=rgb,
                         target=(target[index] == 1).cpu().numpy(),
-                        prediction=(torch.sigmoid(logits[index, 0]) >= THRESHOLD).cpu().numpy(),
+                        prediction=(torch.sigmoid(logits[index, 0]) >= PREDICTION_THRESHOLD).cpu().numpy(),
                         target_class=plan.expert,
                     ))
     summary = binary_summary(source_counts)
@@ -263,7 +274,7 @@ def _write_metadata(layout: RunLayout, model: Sam3AdapterModel, plan: ExpertData
         "logit_resize_to_metric_size": "bilinear; align_corners=false",
         "selection_metric": "maximum validation pixel-micro F1 at threshold 0.5; lower validation loss breaks ties",
         "selection_scope": "expert-specific source-image validation; outer test excluded from checkpoint selection",
-        "threshold": THRESHOLD,
+        "threshold": PREDICTION_THRESHOLD,
         "epochs": args.epochs,
         "effective_batch_size": args.batch_size * args.accumulation_steps,
         "command": [sys.executable, *sys.argv],
@@ -288,7 +299,7 @@ def _save(
         "best_validation_f1": best_f1,
         "best_validation_loss_at_best_f1": best_loss,
         "selection_metric": "validation_pixel_micro_f1",
-        "selection_threshold": THRESHOLD,
+        "selection_threshold": PREDICTION_THRESHOLD,
         "base_checkpoint_sha256": checkpoint_hash,
         "dataset_sha256": plan.adopted_dataset_sha256,
         "split_sha256": plan.split_sha256,
@@ -309,6 +320,8 @@ def _checkpoint_improved(
 
 
 def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) -> Path:
+    from torch.utils.tensorboard import SummaryWriter
+
     output = _run_root(args)
     if output.exists() and any(output.iterdir()):
         raise FileExistsError(f"refusing to overwrite existing run: {output}")
@@ -424,6 +437,7 @@ class _CloseOnlyReporter:
 
 def finalize_completed_run(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) -> Path:
     """Finish evaluation/reporting after training epochs completed successfully."""
+    from torch.utils.tensorboard import SummaryWriter
 
     output = _run_root(args)
     best_path = output / "artifacts" / "checkpoints" / "best.pt"

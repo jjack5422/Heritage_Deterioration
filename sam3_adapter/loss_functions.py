@@ -17,7 +17,6 @@ def weighted_bce_dice_loss(
     epsilon: float = 1e-6,
 ) -> Tensor:
     """Fixed 2:1 foreground-weighted BCE plus unweighted soft Dice."""
-
     if target.ndim == 3:
         target = target.unsqueeze(1)
     if logits.shape != target.shape or logits.ndim != 4 or logits.shape[1] != 1:

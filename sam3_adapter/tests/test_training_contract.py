@@ -1,24 +1,16 @@
-"""Locked optimizer/loss/batch arguments for A and B."""
+"""Locked optimizer, loss, and batch arguments for SAM3-Adapter experts."""
 
 import pytest
 import torch
 
-from sam3_adapter.expert_training_data import make_expert_target
+from sam3_adapter.training_data import make_expert_target
 
 from sam3_adapter.train import _checkpoint_improved, parse_args as parse_train_args
-from sam3_adapter.train_probe import parse_args as parse_probe_args
-
-
-def test_probe_defaults_match_approved_contract() -> None:
-    args = parse_probe_args(["--group", "sam2_probe"])
-    assert (args.epochs, args.batch_size, args.accumulation_steps) == (80, 4, 1)
-    assert (args.learning_rate, args.weight_decay) == (2e-4, 5e-5)
-    assert (args.positive_weight, args.dice_weight) == (2.0, 0.65)
 
 
 def test_effective_batch_cannot_drift() -> None:
     with pytest.raises(SystemExit):
-        parse_probe_args(["--group", "sam3_probe", "--batch-size", "2", "--accumulation-steps", "1"])
+        parse_train_args(["--expert", "loss", "--batch-size", "2", "--accumulation-steps", "1"])
 
 
 def test_adapter_has_independent_expert_specific_loss_contracts() -> None:
@@ -30,14 +22,13 @@ def test_adapter_has_independent_expert_specific_loss_contracts() -> None:
     assert scratch.manifest.name == "scratch_crack.json"
     assert craquelure.manifest.name == "shrinkage_craquelure.json"
     assert loss.manifest.name == "loss.json"
-    assert "two-dataset-70-15-15" in scratch.experiment_id
+    assert {scratch.manifest.parent.name, craquelure.manifest.parent.name, loss.manifest.parent.name} == {"transfer_512"}
+    assert scratch.experiment_id == "2026-09-20_transfer-512_seed42"
     assert (scratch.positive_weight, craquelure.positive_weight, loss.positive_weight) == (1.0, 2.0, 1.0)
     assert craquelure.model_input_size == 512
     assert parse_train_args(["--expert", "shrinkage_craquelure", "--model-input-size", "1008"]).model_input_size == 1008
     with pytest.raises(SystemExit):
         parse_train_args(["--expert", "scratch_crack", "--positive-weight", "2"])
-    with pytest.raises(SystemExit):
-        parse_probe_args(["--group", "sam3_adapter"])
 
 
 def test_expert_target_uses_available_crack_label_and_preserves_ignore() -> None:
