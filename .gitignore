@@ -3,13 +3,6 @@
 .venv/
 venv/
 
-# Python cache/build artifacts
-__pycache__/
-*.pyc
-*.py[cod]
-*.egg-info/
-.pytest_cache/
-.ipynb_checkpoints/
 
 # Data and generated outputs
 _data/
@@ -68,3 +61,11 @@ sam3_adapter/vendor_upstream_runtime/
 
 # Tool caches
 .ruff_cache/
+
+# Python cache/build artifacts
+__pycache__/
+*.pyc
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
