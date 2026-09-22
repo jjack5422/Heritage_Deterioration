@@ -24,6 +24,8 @@ model_comparisons/
 **/outputs/
 **/preds/
 **/checkpoints/
+dataset_jacky/
+dataset115_filtered/
 
 # Model weights and large generated arrays
 *.pt

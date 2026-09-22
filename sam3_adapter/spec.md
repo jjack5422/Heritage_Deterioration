@@ -119,7 +119,7 @@ SAM2 端固定使用已核准的 Hiera-L checkpoint（image encoder 約 2.13 億
 
 | 設定 | 鎖定值 |
 |---|---|
-| epochs | 80 |
+| epochs | 60 |
 | early stopping | 關閉 |
 | seed | 42 |
 | source image／GT size | 512 x 512 |
@@ -131,7 +131,7 @@ SAM2 端固定使用已核准的 Hiera-L checkpoint（image encoder 約 2.13 億
 | optimizer | AdamW |
 | learning rate | `2e-4` |
 | weight decay | `5e-5` |
-| scheduler | CosineAnnealingLR，`T_max=80`，每 epoch 推進一次 |
+| scheduler | CosineAnnealingLR，`T_max=60`，每 epoch 推進一次 |
 | AMP | 開啟 |
 | gradient clipping | 1.0 |
 | loss | foreground-weighted BCE + unweighted soft Dice |

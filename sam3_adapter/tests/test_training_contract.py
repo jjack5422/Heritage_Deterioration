@@ -25,11 +25,12 @@ def test_adapter_has_independent_expert_specific_loss_contracts() -> None:
     scratch = parse_train_args(["--expert", "scratch_crack"])
     craquelure = parse_train_args(["--expert", "shrinkage_craquelure"])
     loss = parse_train_args(["--expert", "loss"])
+    assert (scratch.epochs, craquelure.epochs, loss.epochs) == (60, 60, 60)
     assert scratch.batch_size * scratch.accumulation_steps == 4
     assert scratch.manifest.name == "scratch_crack.json"
     assert craquelure.manifest.name == "shrinkage_craquelure.json"
     assert loss.manifest.name == "loss.json"
-    assert "jacky-high-positive-validation" in scratch.experiment_id
+    assert "two-dataset-70-15-15" in scratch.experiment_id
     assert (scratch.positive_weight, craquelure.positive_weight, loss.positive_weight) == (1.0, 2.0, 1.0)
     assert craquelure.model_input_size == 512
     assert parse_train_args(["--expert", "shrinkage_craquelure", "--model-input-size", "1008"]).model_input_size == 1008

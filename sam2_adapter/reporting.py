@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import math
 import subprocess
@@ -46,7 +47,9 @@ PER_IMAGE_COLUMNS = (
     "prediction_path",
     "overlay_path",
 )
-REPORTING_SCRIPTS = Path.home() / ".codex" / "skills" / "training-output-reporting" / "scripts"
+_SKILL_REPORTING_SCRIPTS = Path.home() / ".codex" / "skills" / "training-output-reporting" / "scripts"
+_LOCAL_REPORTING_SCRIPTS = Path(__file__).resolve().parents[1] / "scripts" / "reporting" / "training_output_reporting"
+REPORTING_SCRIPTS = _SKILL_REPORTING_SCRIPTS if _SKILL_REPORTING_SCRIPTS.is_dir() else _LOCAL_REPORTING_SCRIPTS
 
 
 @dataclass(frozen=True)
@@ -210,7 +213,10 @@ def save_qualitative_example(
         raise ValueError("input_rgb must be HxWx3")
     if target.shape != input_rgb.shape[:2] or prediction.shape != input_rgb.shape[:2]:
         raise ValueError("target and prediction must match input image height/width")
-    identifier = Path(image_id).stem
+    # Full dataset-qualified tile names exceed MAX_PATH under deeply nested run
+    # directories on Windows. The CSV retains the original image ID; only the
+    # artifact directory uses a deterministic compact identity.
+    identifier = hashlib.sha256(image_id.encode("utf-8")).hexdigest()[:20]
     destination = layout.qualitative / identifier
     destination.mkdir(parents=True, exist_ok=True)
     input_rgb = input_rgb.astype(np.uint8, copy=False)
@@ -272,7 +278,7 @@ def _embed_ranked_composites(
     for group, ranked in groups.items():
         for rank, row in enumerate(ranked, start=1):
             composite = _load_composite(layout, row)
-            safe_id = "".join(char if char.isalnum() or char in "-_" else "_" for char in Path(str(row["image"])).stem)
+            safe_id = hashlib.sha256(str(row["image"]).encode("utf-8")).hexdigest()[:20]
             writer.add_image(
                 f"qualitative/{group}/{rank:02d}_{safe_id}",
                 composite,

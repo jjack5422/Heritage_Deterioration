@@ -30,7 +30,6 @@ from sam3_adapter.expert_training_data import (
     ExpertDataPlan,
     ExpertTileDataset,
     denormalize_image,
-    make_expert_target,
     prepare_expert_data_plan,
 )
 from sam3_adapter.losses import weighted_bce_dice_loss
@@ -38,9 +37,9 @@ from sam3_adapter.sam3_adapter_model import Sam3AdapterModel
 
 PROJECT_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = PROJECT_ROOT.parent
-DEFAULT_MANIFEST_DIR = WORKSPACE_ROOT / "outputs" / "deterioration_statistics" / "jacky_experts"
+DEFAULT_MANIFEST_DIR = WORKSPACE_ROOT / "outputs" / "deterioration_statistics" / "combined_experts"
 DEFAULT_CHECKPOINT = WORKSPACE_ROOT / "segment-anything-3" / "checkpoints" / "sam3.pt"
-DEFAULT_EXPERIMENT = "2026-09-15_three-experts_sam3-adapter_jacky-high-positive-validation_seed42"
+DEFAULT_EXPERIMENT = "2026-09-16_three-experts_sam3-adapter_two-dataset-70-15-15_seed42"
 EXPERT_POSITIVE_WEIGHTS = {
     "scratch_crack": 1.0,
     "shrinkage_craquelure": 2.0,
@@ -55,7 +54,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT)
     parser.add_argument("--model-input-size", type=int, choices=(512, 1008), default=512)
-    parser.add_argument("--epochs", type=int, default=80)
+    parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--accumulation-steps", type=int, default=1)
     parser.add_argument("--num-workers", type=int, default=4)
@@ -68,6 +67,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--experiment-id", default=DEFAULT_EXPERIMENT)
     parser.add_argument("--amp", action=argparse.BooleanOptionalAction, default=True)
     parser.add_argument("--smoke-test", action="store_true", help="Run one complete optimizer step without writing a run.")
+    parser.add_argument("--finalize-only", action="store_true", help="Finalize validation/test/reporting from an existing best checkpoint.")
     parser.add_argument("--validate-data-only", action="store_true", help="Validate the full manifest and exit before CUDA initialization.")
     args = parser.parse_args(argv)
     args.manifest = (args.manifest or DEFAULT_MANIFEST_DIR / f"{args.expert}.json").resolve()
@@ -94,11 +94,13 @@ def _seed_worker(worker_id: int) -> None:
     np.random.seed(seed)
 
 
-def _loader(rows: Sequence[Mapping[str, str]], *, train: bool, args: argparse.Namespace) -> DataLoader:
+def _loader(
+    rows: Sequence[Mapping[str, Any]], *, raw_ids: Sequence[int], train: bool, args: argparse.Namespace,
+) -> DataLoader:
     generator = torch.Generator().manual_seed(args.seed + (1 if train else 0))
     workers = min(args.num_workers, os.cpu_count() or 1)
     return DataLoader(
-        ExpertTileDataset(rows, train_augmentation=train),
+        ExpertTileDataset(rows, raw_ids=raw_ids, train_augmentation=train),
         batch_size=args.batch_size,
         shuffle=train,
         num_workers=workers,
@@ -149,7 +151,7 @@ def _evaluate(
     with torch.no_grad():
         for batch in loader:
             images = _batch_tensor(batch, "image", device)
-            target = make_expert_target(_batch_tensor(batch, "mask", device).long(), plan.raw_ids)
+            target = _batch_tensor(batch, "target", device).long()
             with _autocast(device, args.amp):
                 logits = model(images)
                 loss = weighted_bce_dice_loss(logits, target, ignore_value=255, positive_weight=args.positive_weight, dice_weight=args.dice_weight)
@@ -196,7 +198,7 @@ def _train_epoch(
     sample_count = 0
     for batch_index, batch in enumerate(loader, 1):
         images = _batch_tensor(batch, "image", device)
-        target = make_expert_target(_batch_tensor(batch, "mask", device).long(), plan.raw_ids)
+        target = _batch_tensor(batch, "target", device).long()
         with _autocast(device, args.amp):
             loss = weighted_bce_dice_loss(
                 model(images),
@@ -260,7 +262,7 @@ def _write_metadata(layout: RunLayout, model: Sam3AdapterModel, plan: ExpertData
         "target_mask_resize": "none",
         "logit_resize_to_metric_size": "bilinear; align_corners=false",
         "selection_metric": "maximum validation pixel-micro F1 at threshold 0.5; lower validation loss breaks ties",
-        "selection_scope": "expert-specific dataset_jacky source-group validation; no outer test",
+        "selection_scope": "expert-specific source-image validation; outer test excluded from checkpoint selection",
         "threshold": THRESHOLD,
         "epochs": args.epochs,
         "effective_batch_size": args.batch_size * args.accumulation_steps,
@@ -316,8 +318,9 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
     _write_metadata(layout, model, plan, args, checkpoint_hash)
     optimizer = AdamW((parameter for parameter in model.parameters() if parameter.requires_grad), lr=args.learning_rate, weight_decay=args.weight_decay)
     scheduler = CosineAnnealingLR(optimizer, T_max=args.epochs, eta_min=0.0)
-    train_loader = _loader(plan.train, train=True, args=args)
-    validation_loader = _loader(plan.validation, train=False, args=args)
+    train_loader = _loader(plan.train, raw_ids=plan.raw_ids, train=True, args=args)
+    validation_loader = _loader(plan.validation, raw_ids=plan.raw_ids, train=False, args=args)
+    test_loader = _loader(plan.test, raw_ids=plan.raw_ids, train=False, args=args)
     writer = SummaryWriter(log_dir=str(layout.tensorboard))
     reporter = EpochReporter(layout.metrics / "epochs.csv", writer)
     best_f1, best_loss, best_epoch, finalized = float("-inf"), float("inf"), 0, False
@@ -374,6 +377,7 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
         payload = torch.load(layout.checkpoints / "best.pt", map_location="cpu", weights_only=False)
         load_trainable_state_dict(model, payload["adaptation_state"])
         selected = _evaluate(model, validation_loader, plan, args, device, layout)
+        outer_test = _evaluate(model, test_loader, plan, args, device)
         write_json(layout.metrics / "selected_validation_metrics.json", {key: value for key, value in selected.items() if key != "per_image_rows"})
         write_json(layout.metrics / "experiment_summary.json", {
             "status": "completed",
@@ -384,7 +388,8 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
             "validation_loss_at_best_f1": best_loss,
             "validation_datasets": sorted({row["dataset"] for row in plan.validation}),
             "dataset_policy": dict(plan.dataset_policy),
-            "outer_test_skipped": True,
+            "test_datasets": sorted({row["dataset"] for row in plan.test}),
+            "outer_test_skipped": False,
             "peak_allocated_mib": torch.cuda.max_memory_allocated(device) / 1024**2,
             "peak_reserved_mib": torch.cuda.max_memory_reserved(device) / 1024**2,
         })
@@ -394,7 +399,12 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
             reporter=reporter,
             validation_rows=selected["per_image_rows"],
             selected_epoch=best_epoch,
-            outer_test_metrics={"status": "outer_test_skipped", "reason": "no independent outer-test dataset is available"},
+            outer_test_metrics={
+                "status": "completed",
+                "selection_excluded": True,
+                "selected_epoch": best_epoch,
+                **{key: value for key, value in outer_test.items() if key != "per_image_rows"},
+            },
         )
         finalized = True
         append_log(layout, f"completed selected_epoch={best_epoch}")
@@ -402,6 +412,65 @@ def train(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) 
         if not finalized:
             reporter.close()
             writer.close()
+        del model
+        torch.cuda.empty_cache()
+    return output
+
+
+class _CloseOnlyReporter:
+    def close(self) -> None:
+        """Satisfy finalize_reporting without reopening or truncating epochs.csv."""
+
+
+def finalize_completed_run(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.device) -> Path:
+    """Finish evaluation/reporting after training epochs completed successfully."""
+
+    output = _run_root(args)
+    best_path = output / "artifacts" / "checkpoints" / "best.pt"
+    epochs_path = output / "metrics" / "epochs.csv"
+    if not best_path.is_file() or not epochs_path.is_file():
+        raise FileNotFoundError("finalize-only requires existing best.pt and metrics/epochs.csv")
+    layout = RunLayout.create(output)
+    model = _build_model(args, device)
+    payload = torch.load(best_path, map_location="cpu", weights_only=False)
+    load_trainable_state_dict(model, payload["adaptation_state"])
+    best_epoch = int(payload["epoch"])
+    validation_loader = _loader(plan.validation, raw_ids=plan.raw_ids, train=False, args=args)
+    test_loader = _loader(plan.test, raw_ids=plan.raw_ids, train=False, args=args)
+    writer = SummaryWriter(log_dir=str(layout.tensorboard))
+    try:
+        selected = _evaluate(model, validation_loader, plan, args, device, layout)
+        outer_test = _evaluate(model, test_loader, plan, args, device)
+        write_json(layout.metrics / "selected_validation_metrics.json", {key: value for key, value in selected.items() if key != "per_image_rows"})
+        write_json(layout.metrics / "experiment_summary.json", {
+            "status": "completed",
+            "expert": args.expert,
+            "fold": 0,
+            "selected_epoch": best_epoch,
+            "best_validation_f1": float(payload["best_validation_f1"]),
+            "validation_loss_at_best_f1": float(payload["best_validation_loss_at_best_f1"]),
+            "validation_datasets": sorted({row["dataset"] for row in plan.validation}),
+            "test_datasets": sorted({row["dataset"] for row in plan.test}),
+            "dataset_policy": dict(plan.dataset_policy),
+            "outer_test_skipped": False,
+            "finalized_from_existing_checkpoint": True,
+        })
+        finalize_reporting(
+            layout,
+            writer=writer,
+            reporter=_CloseOnlyReporter(),
+            validation_rows=selected["per_image_rows"],
+            selected_epoch=best_epoch,
+            outer_test_metrics={
+                "status": "completed",
+                "selection_excluded": True,
+                "selected_epoch": best_epoch,
+                **{key: value for key, value in outer_test.items() if key != "per_image_rows"},
+            },
+        )
+        append_log(layout, f"finalized_from_existing_checkpoint selected_epoch={best_epoch}")
+    finally:
+        writer.close()
         del model
         torch.cuda.empty_cache()
     return output
@@ -417,9 +486,9 @@ def smoke_test(args: argparse.Namespace, plan: ExpertDataPlan, device: torch.dev
         lr=args.learning_rate,
         weight_decay=args.weight_decay,
     )
-    batch = next(iter(_loader(plan.train, train=True, args=args)))
+    batch = next(iter(_loader(plan.train, raw_ids=plan.raw_ids, train=True, args=args)))
     images = _batch_tensor(batch, "image", device)
-    target = make_expert_target(_batch_tensor(batch, "mask", device).long(), plan.raw_ids)
+    target = _batch_tensor(batch, "target", device).long()
     torch.cuda.reset_peak_memory_stats(device)
     with _autocast(device, args.amp):
         logits = model(images)
@@ -475,6 +544,9 @@ def main(argv: list[str] | None = None) -> int:
     if args.smoke_test:
         smoke_test(args, plan, device)
         return 0
+    if args.finalize_only:
+        finalize_completed_run(args, plan, device)
+        return 0
     info = PROJECT_ROOT / "runs" / args.experiment_id / "info"
     write_json(info / "experiment.json", {
         "schema_version": 1,
@@ -485,7 +557,7 @@ def main(argv: list[str] | None = None) -> int:
         "dataset_sha256": plan.dataset_sha256,
         "dataset_policy": dict(plan.dataset_policy),
         "split_contracts": "expert-specific; see <expert>_dataset_contract.json",
-        "selection_boundary": "two complete dataset_jacky groups per expert; remaining fourteen groups train; outer test skipped",
+        "selection_boundary": "source-image grouped 70/15/15 split; dataset_jacky excluded from test; outer test excluded from checkpoint selection",
         "created_at": datetime.now().astimezone().isoformat(),
     })
     write_json(info / f"{args.expert}_dataset_contract.json", plan.record())

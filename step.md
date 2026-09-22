@@ -21,7 +21,8 @@ Git repository 不包含下列被忽略的大型／本機檔案。最可靠的�
 ```text
 sam3_adapter/vendor_upstream_runtime/
 dataset_jacky/
-outputs/deterioration_statistics/jacky_experts/
+dataset115_filtered/
+outputs/deterioration_statistics/combined_experts/
 ```
 
 checkpoint 可以從 Hugging Face 重新下載，不必跨電腦複製。完整正式訓練報告還需要：
@@ -172,14 +173,16 @@ SHA256: 9999E2341CEEF5E136DAA386EECB55CB414446A00AC2B55EB2DFD2F7C3CF8C9E
 
 ```text
 dataset_jacky/
-outputs/deterioration_statistics/jacky_experts/
+dataset115_filtered/
+outputs/deterioration_statistics/combined_experts/
 ```
 
 放到新 repository 的相同相對位置：
 
 ```text
 Heritage_Deterioration/dataset_jacky/
-Heritage_Deterioration/outputs/deterioration_statistics/jacky_experts/
+Heritage_Deterioration/dataset115_filtered/
+Heritage_Deterioration/outputs/deterioration_statistics/combined_experts/
 ```
 
 manifest 目錄必須含：
@@ -190,10 +193,10 @@ shrinkage_craquelure.json
 loss.json
 ```
 
-如果只複製 `dataset_jacky`，也可重新建立 manifests：
+如果複製兩個 dataset，也可重新建立 manifests：
 
 ```powershell
-python -m scripts.data.prepare_jacky_expert_splits
+python -m scripts.data.prepare_combined_expert_splits
 ```
 
 ## 7. 驗證三個資料 contract
@@ -206,13 +209,13 @@ python -m sam3_adapter.train --expert loss --validate-data-only
 
 預期 tile 數：
 
-| expert | training | validation |
-|---|---:|---:|
-| `scratch_crack` | 601 | 142 |
-| `shrinkage_craquelure` | 605 | 138 |
-| `loss` | 588 | 155 |
+| expert | training | validation | test |
+|---|---:|---:|---:|
+| `scratch_crack` | 1020 | 219 | 219 |
+| `shrinkage_craquelure` | 1020 | 219 | 219 |
+| `loss` | 1020 | 219 | 219 |
 
-三份輸出都必須成功，且 `outer_test` 應為 `skipped`。
+三份輸出都必須成功，且 `outer_test` 應標示只使用 `dataset115_filtered`、不參與 checkpoint selection。
 
 ## 8. 執行程式測試與三個 1008 smoke tests
 
@@ -241,7 +244,7 @@ python -m sam3_adapter.train --expert loss --model-input-size 1008 --smoke-test
 
 ## 9. 正式訓練前安裝 reporting skill
 
-訓練迴圈可以在沒有此工具時執行，但 80 epochs 結束後的 TensorBoard PNG、CSV、HTML
+訓練迴圈可以在沒有此工具時執行，但 60 epochs 結束後的 TensorBoard PNG、CSV、HTML
 dashboard 會失敗。因此正式 run 前，必須從原工作站複製完整資料夾：
 
 ```text
@@ -263,7 +266,7 @@ Test-Path (Join-Path $reporting 'export_tensorboard_images.py')
 Test-Path (Join-Path $reporting 'build_training_report.py')
 ```
 
-三項都必須是 `True` 才開始正式 80-epoch run。
+三項都必須是 `True` 才開始正式 60-epoch run。
 
 ## 10. 正式訓練三個 experts
 
@@ -296,10 +299,9 @@ sam3_adapter/runs/<experiment_id>/1fold/<expert>/fold0/
 - [ ] `pip check` 無錯誤。
 - [ ] 已驗證的 `vendor_upstream_runtime` 已放入正確位置。
 - [ ] `sam3.pt` size 與 SHA-256 正確。
-- [ ] `dataset_jacky` 與三份 manifests 已放入正確位置。
+- [ ] `dataset_jacky`、`dataset115_filtered` 與三份 manifests 已放入正確位置。
 - [ ] 三個 `--validate-data-only` 全部通過。
 - [ ] `pytest` 通過。
 - [ ] 三個 1008 `--smoke-test` 全部通過。
 - [ ] `training-output-reporting/scripts` 三個必要腳本存在。
 - [ ] 正式三個 experts 使用同一 experiment ID、依序執行。
-

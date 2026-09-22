@@ -48,8 +48,9 @@ server 安裝 `nvcc`。
 ```text
 segment-anything-2/checkpoints/sam2.1_hiera_large.pt
 segment-anything-3/checkpoints/sam3.pt
-outputs/deterioration_statistics/jacky_experts/
-訓練使用的 dataset 目錄
+outputs/deterioration_statistics/combined_experts/
+dataset_jacky/
+dataset115_filtered/
 ```
 
 完整訓練最後依賴
@@ -86,10 +87,10 @@ Probe 使用舊的 929-tile nested 5-fold comparison contract。`train_probe.py`
 
 ## 三個正式 SAM3-Adapter experts
 
-目前正式 contract 只使用 `dataset_jacky` 的 743 張 tiles；每位 expert 各保留兩個完整 source groups 作 validation，其餘 14 組作 training。三份 manifest 分開保存，禁止同一幅畫跨 partition。先建立與驗證 split：
+目前 contract 合併 `dataset_jacky` 的 743 張 tiles 與 `dataset115_filtered` 的 715 張 tiles。每位 expert 以完整原圖為單位建立約 70/15/15 的 training／validation／test；`dataset_jacky` 不得進 test，而 `dataset115_filtered` 三者皆可。三份 manifest 分開保存，禁止同一原圖的 tiles 跨 partition。先建立與驗證 split：
 
 ```bash
-./crackseg_env/bin/python -m scripts.data.prepare_jacky_expert_splits
+./crackseg_env/bin/python -m scripts.data.prepare_combined_expert_splits
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert scratch_crack --validate-data-only
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert shrinkage_craquelure --validate-data-only
 PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --validate-data-only
@@ -116,13 +117,13 @@ PYTHONPATH=. ./sam3_env/bin/python -m sam3_adapter.train --expert loss --model-i
 | loss | foreground-weighted BCE + `0.65 ×` soft Dice |
 | BCE positive weight | `shrinkage_craquelure=2.0`；`scratch_crack=1.0`；`loss=1.0` |
 | optimizer | AdamW，learning rate `2e-4`，weight decay `5e-5` |
-| scheduler | CosineAnnealingLR，`T_max=80`，每 epoch 更新 |
-| epochs／effective batch | `80`／`4` |
+| scheduler | CosineAnnealingLR，`T_max=60`，每 epoch 更新 |
+| epochs／effective batch | `60`／`4` |
 | gradient clipping／AMP | `1.0`／啟用 |
 | seed／prediction threshold | `42`／`0.5` |
 | checkpoint selection | validation BCE + Dice loss 最低 |
 
-Training manifests 位於 `outputs/deterioration_statistics/jacky_experts/{scratch_crack,shrinkage_craquelure,loss}.json`。各 expert 的 training／validation 張數分別為 `601/142`、`605/138`、`588/155`；兩側皆只含 `dataset_jacky`，`dataset` 與 Dataset114 排除。`scratch_crack` 因 Jacky 沒有 Scratch 標註，實際 supervision 僅使用 Crack ID 1。沒有 outer-test，輸出明列 `outer_test_skipped`。
+Training manifests 位於 `outputs/deterioration_statistics/combined_experts/{scratch_crack,shrinkage_craquelure,loss}.json`。三位 expert 均為 training／validation／test = `1020/219/219`（69.96%／15.02%／15.02%）。test 只取自 `dataset115_filtered`，並在 tile 數最接近 15% 的候選中最大化對應劣化前景比例；`loss` 的 `KJWTomh-SC-M-A7'-1` 強制留在 training。`scratch_crack` 在 Jacky 使用 ID 1，在 dataset115 使用 ID 1 與 11。outer test 只在 validation 選定 checkpoint 後評估，不參與選模。
 
 Training augmentation 使用同步的 0°／90°／180°／270° 旋轉及水平／垂直翻轉。RGB 另套用 brightness、contrast、gamma `0.85–1.15` 與每通道 gain `0.95–1.05`。不加入雜訊、blur、任意角度旋轉或 mask morphology。
 
