@@ -9,6 +9,8 @@ _data/
 data/
 !scripts/data/
 !scripts/data/**
+!model_projects/**/scripts/data/
+!model_projects/**/scripts/data/**
 datasets/
 !tests/datasets/
 !tests/datasets/**
