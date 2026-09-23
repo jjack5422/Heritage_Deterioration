@@ -116,15 +116,15 @@ Recommended external model storage:
 
 ```text
 /data/models/
-├── sam2_adapter/
+├── model_projects/sam2_adapter/
 │   ├── best.pth
 │   └── epoch_100.pth
 │
-├── resunet/
+├── resmodel_projects/unet/
 │   ├── best.pth
 │   └── epoch_80.pth
 │
-└── unet/
+└── model_projects/unet/
     └── best.pth
 ```
 
@@ -153,8 +153,8 @@ segmentation_web/
 │   ├── __init__.py
 │   ├── base.py
 │   ├── dummy.py
-│   ├── sam2_adapter.py
-│   └── resunet.py
+│   ├── model_projects.sam2_adapter.py
+│   └── resmodel_projects.unet.py
 │
 ├── utils/
 │   ├── __init__.py
@@ -418,7 +418,7 @@ or another clearly defined virtual value.
 Create:
 
 ```text
-adapters/sam2_adapter.py
+adapters/model_projects.sam2_adapter.py
 ```
 
 Do not invent unknown project-specific SAM2 implementation details.
@@ -459,7 +459,7 @@ Do not silently return fake results.
 Create:
 
 ```text
-adapters/resunet.py
+adapters/resmodel_projects.unet.py
 ```
 
 Follow the same pattern as SAM2 Adapter.
@@ -1221,7 +1221,7 @@ and show example directory structure.
 Example:
 
 ```text
-/data/models/sam2_adapter/new_best.pth
+/data/models/model_projects/sam2_adapter/new_best.pth
 ```
 
 After placing it there, the UI should automatically discover it.

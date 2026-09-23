@@ -14,7 +14,6 @@ TAGS = {
     "metrics/precision": "precision",
     "metrics/recall": "recall",
     "metrics/iou": "iou",
-    "metrics/accuracy": "accuracy",
     "optimizer/lr": "learning_rate",
 }
 

@@ -47,12 +47,12 @@ git log -5 --oneline
 ```
 
 預期可看到中文設計規格 commit `1d04e23`。目前工作樹包含使用者既有刪除、
-`monument_da_sam3/` → `dual_adapter_sam3/` 改名及其他未追蹤內容；本任務不得還原、
+`monument_da_sam3/` → `model_projects/dual_adapter_sam3/` 改名及其他未追蹤內容；本任務不得還原、
 覆蓋或順手提交這些不相關變更。所有提交禁止使用 `git add .` 或 `git add -A`。
 
 ### 0.2 動到 training loop 前完整讀取必要 skill
 
-本次會修改 `dual_adapter_sam3/train.py`，因此開始 Task 4 前必須完整讀取並遵守本環境
+本次會修改 `model_projects/dual_adapter_sam3/train.py`，因此開始 Task 4 前必須完整讀取並遵守本環境
 所提供的 `$training-output-reporting`：
 
 ```text
@@ -69,7 +69,7 @@ git log -5 --oneline
 ```bash
 PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests \
+  model_projects/dual_adapter_sam3/tests \
   tests/architecture
 ```
 
@@ -82,7 +82,7 @@ PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
 
 **新增檔案：**
 
-- `dual_adapter_sam3/visual_adapter.py`
+- `model_projects/dual_adapter_sam3/visual_adapter.py`
 - `tests/architecture/test_visual_adapter_features.py`
 
 ### 1.1 先寫 high-pass 與 pyramid 的失敗測試
@@ -157,7 +157,7 @@ PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
   tests/architecture/test_visual_adapter_features.py
 git diff --check
-git add dual_adapter_sam3/visual_adapter.py \
+git add model_projects/dual_adapter_sam3/visual_adapter.py \
   tests/architecture/test_visual_adapter_features.py
 git commit -m "feat: add shared SAM3 visual adapter"
 ```
@@ -168,8 +168,8 @@ git commit -m "feat: add shared SAM3 visual adapter"
 
 **修改檔案：**
 
-- `dual_adapter_sam3/visual_adapter.py`
-- `dual_adapter_sam3/sam3_integration.py`
+- `model_projects/dual_adapter_sam3/visual_adapter.py`
+- `model_projects/dual_adapter_sam3/sam3_integration.py`
 
 **新增檔案：**
 
@@ -200,7 +200,7 @@ git commit -m "feat: add shared SAM3 visual adapter"
 - injection 不複製或解凍原始 block/MLP weights；
 - legacy builder 未選 visual variant 時，不附加 visual module、不換 MLP forward；
 - `dual_adapter_sam3` runtime Python files 不 import
-  `sam3_adapter.vendor_upstream_runtime`。
+  `model_projects.sam3_adapter.vendor_upstream_runtime`。
 
 ### 2.3 實作 repository-native trunk integration
 
@@ -213,7 +213,7 @@ def inject_visual_adapter(trunk: nn.Module, config: VisualAdapterConfig) -> Visu
 ```
 
 只修改已載入 model instance，不改 vendor source，也不把
-`sam3_adapter/vendor_upstream_runtime` 變成 runtime dependency。注入後的 trunk forward
+`model_projects/sam3_adapter/vendor_upstream_runtime` 變成 runtime dependency。注入後的 trunk forward
 必須維持官方輸出 list/feature shapes 與 neck interface；差別只是在各 block 後加入
 zero-initialized residual。
 
@@ -234,11 +234,11 @@ PYTHONPATH=.:segment-anything-3 PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
   tests/architecture/test_visual_adapter_features.py \
   tests/architecture/test_visual_adapter_integration.py \
-  dual_adapter_sam3/tests/test_training_stages.py
+  model_projects/dual_adapter_sam3/tests/test_training_stages.py
 rg -n "vendor_upstream_runtime" dual_adapter_sam3 -g '*.py'
 git diff --check
-git add dual_adapter_sam3/visual_adapter.py \
-  dual_adapter_sam3/sam3_integration.py \
+git add model_projects/dual_adapter_sam3/visual_adapter.py \
+  model_projects/dual_adapter_sam3/sam3_integration.py \
   tests/architecture/test_visual_adapter_integration.py
 git commit -m "feat: inject visual adapter into official SAM3"
 ```
@@ -251,9 +251,9 @@ git commit -m "feat: inject visual adapter into official SAM3"
 
 **修改檔案：**
 
-- `dual_adapter_sam3/model.py`
-- `dual_adapter_sam3/__init__.py`
-- `dual_adapter_sam3/configs/train.yaml`
+- `model_projects/dual_adapter_sam3/model.py`
+- `model_projects/dual_adapter_sam3/__init__.py`
+- `model_projects/dual_adapter_sam3/configs/train.yaml`
 
 **新增檔案：**
 
@@ -329,11 +329,11 @@ stage 的 adaptation modules。
 PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
   tests/architecture/test_visual_da_sam3_variants.py \
-  dual_adapter_sam3/tests/test_training_stages.py \
-  dual_adapter_sam3/tests/test_concept_contract.py
+  model_projects/dual_adapter_sam3/tests/test_training_stages.py \
+  model_projects/dual_adapter_sam3/tests/test_concept_contract.py
 git diff --check
-git add dual_adapter_sam3/model.py dual_adapter_sam3/__init__.py \
-  dual_adapter_sam3/configs/train.yaml \
+git add model_projects/dual_adapter_sam3/model.py model_projects/dual_adapter_sam3/__init__.py \
+  model_projects/dual_adapter_sam3/configs/train.yaml \
   tests/architecture/test_visual_da_sam3_variants.py
 git commit -m "feat: add visual DA-SAM3 model variant"
 ```
@@ -344,7 +344,7 @@ git commit -m "feat: add visual DA-SAM3 model variant"
 
 **修改檔案：**
 
-- `dual_adapter_sam3/train.py`
+- `model_projects/dual_adapter_sam3/train.py`
 
 **新增檔案：**
 
@@ -397,10 +397,10 @@ def _validate_checkpoint_contract(...): ...
 PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
   tests/architecture/test_visual_da_sam3_checkpoints.py \
-  dual_adapter_sam3/tests/test_training_stages.py \
-  dual_adapter_sam3/tests/test_reporting_contract.py
+  model_projects/dual_adapter_sam3/tests/test_training_stages.py \
+  model_projects/dual_adapter_sam3/tests/test_reporting_contract.py
 git diff --check
-git add dual_adapter_sam3/train.py \
+git add model_projects/dual_adapter_sam3/train.py \
   tests/architecture/test_visual_da_sam3_checkpoints.py
 git commit -m "feat: enforce DA-SAM3 variant checkpoints"
 ```
@@ -411,7 +411,7 @@ git commit -m "feat: enforce DA-SAM3 variant checkpoints"
 
 **修改檔案：**
 
-- `dual_adapter_sam3/train.py`
+- `model_projects/dual_adapter_sam3/train.py`
 
 **新增檔案：**
 
@@ -459,10 +459,10 @@ PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
   tests/architecture/test_visual_da_sam3_training_cli.py \
   tests/architecture/test_visual_da_sam3_checkpoints.py \
-  dual_adapter_sam3/tests/test_training_stages.py \
-  dual_adapter_sam3/tests/test_reporting_contract.py
+  model_projects/dual_adapter_sam3/tests/test_training_stages.py \
+  model_projects/dual_adapter_sam3/tests/test_reporting_contract.py
 git diff --check
-git add dual_adapter_sam3/train.py \
+git add model_projects/dual_adapter_sam3/train.py \
   tests/architecture/test_visual_da_sam3_training_cli.py
 git commit -m "feat: select DA-SAM3 variants in training"
 ```
@@ -473,11 +473,11 @@ git commit -m "feat: select DA-SAM3 variants in training"
 
 **修改檔案：**
 
-- `dual_adapter_sam3/evaluate_cross_validation.py`
+- `model_projects/dual_adapter_sam3/evaluate_cross_validation.py`
 
 **新增檔案：**
 
-- `tests/evaluation/test_visual_da_sam3_evaluation_cli.py`
+- `model_projects/dual_adapter_sam3/tests/test_evaluation_cli.py`
 
 ### 6.1 先寫 evaluation 失敗測試
 
@@ -496,7 +496,7 @@ git commit -m "feat: select DA-SAM3 variants in training"
 
 重用 training module 的 variant/path/checkpoint contract helpers；若 import 方向會造成循環，
 把純 checkpoint/path contract 移到單一責任 module，而不是複製兩份判斷。若因此需要新增
-Python 檔，其名稱必須描述責任，例如 `dual_adapter_sam3/model_variants.py` 或
+Python 檔，其名稱必須描述責任，例如 `model_projects/dual_adapter_sam3/model_variants.py` 或
 `checkpoint_contract.py`，不得使用 `utils.py`。
 
 保留既有 outer-test 隔離、metric aggregation、qualitative/reporting 行為；只加入明確 variant
@@ -507,13 +507,13 @@ selection 與 links。此 task 只跑 unit tests，不執行 `evaluate_cross_val
 ```bash
 PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
-  tests/evaluation/test_visual_da_sam3_evaluation_cli.py \
+  model_projects/dual_adapter_sam3/tests/test_evaluation_cli.py \
   tests/architecture/test_visual_da_sam3_training_cli.py \
   tests/architecture/test_visual_da_sam3_checkpoints.py \
-  dual_adapter_sam3/tests/test_cross_validation_reporting.py
+  model_projects/dual_adapter_sam3/tests/test_cross_validation_reporting.py
 git diff --check
-git add dual_adapter_sam3/evaluate_cross_validation.py \
-  tests/evaluation/test_visual_da_sam3_evaluation_cli.py
+git add model_projects/dual_adapter_sam3/evaluate_cross_validation.py \
+  model_projects/dual_adapter_sam3/tests/test_evaluation_cli.py
 ```
 
 若 Task 6 為解耦而新增 contract module，將該檔與受影響測試明確加入上述 `git add`，再提交：
@@ -528,7 +528,7 @@ git commit -m "feat: evaluate explicit DA-SAM3 variants"
 
 **新增檔案：**
 
-- `scripts/evaluation/smoke_visual_da_sam3.py`
+- `model_projects/dual_adapter_sam3/scripts/evaluation/smoke_visual_da_sam3.py`
 - `tests/architecture/test_visual_da_sam3_smoke_contract.py`
 
 ### 7.1 先寫 smoke-script contract 失敗測試
@@ -573,7 +573,7 @@ PYTHONPATH=. PYTHONDONTWRITEBYTECODE=1 \
 ```bash
 PYTHONPATH=.:segment-anything-3 PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/python \
-  scripts/evaluation/smoke_visual_da_sam3.py \
+  model_projects/dual_adapter_sam3/scripts/evaluation/smoke_visual_da_sam3.py \
   --batch-size 4 --steps 2 --max-vram-gib 24
 ```
 
@@ -584,7 +584,7 @@ PYTHONPATH=.:segment-anything-3 PYTHONDONTWRITEBYTECODE=1 \
 - 第二步所有 Visual Adapter trainable tensors 具有 finite non-zero gradients；
 - frozen original parameters 無 gradients；
 - peak allocated VRAM `< 24 GiB`；
-- command 前後未新增 `dual_adapter_sam3/runs/` 內容或 checkpoint/report artifacts。
+- command 前後未新增 `model_projects/dual_adapter_sam3/runs/` 內容或 checkpoint/report artifacts。
 
 若 OOM 或超過 24 GiB，停止並回報量測，不得自行降低 batch size 來宣稱通過。若 gradient
 gate 失敗，列出完整 parameter names，回到 Task 1/2 修正計算圖。
@@ -593,7 +593,7 @@ gate 失敗，列出完整 parameter names，回到 Task 1/2 修正計算圖。
 
 ```bash
 git diff --check
-git add scripts/evaluation/smoke_visual_da_sam3.py \
+git add model_projects/dual_adapter_sam3/scripts/evaluation/smoke_visual_da_sam3.py \
   tests/architecture/test_visual_da_sam3_smoke_contract.py
 git commit -m "test: add visual DA-SAM3 GPU smoke"
 ```
@@ -604,7 +604,7 @@ git commit -m "test: add visual DA-SAM3 GPU smoke"
 
 **修改檔案：**
 
-- `dual_adapter_sam3/README.md`
+- `model_projects/dual_adapter_sam3/README.md`
 
 ### 8.1 更新 README
 
@@ -624,7 +624,7 @@ git commit -m "test: add visual DA-SAM3 GPU smoke"
 
 ```bash
 PYTHONPATH=.:segment-anything-3 \
-  /home/jacky/project/crackseg_env/bin/python -m dual_adapter_sam3.train \
+  /home/jacky/project/crackseg_env/bin/python -m model_projects.dual_adapter_sam3.train \
   --model-variant visual_da_sam3 ...
 ```
 
@@ -635,9 +635,8 @@ README 可記錄 smoke test 的實際 peak VRAM，但不得寫未量測的 F1/Io
 ```bash
 PYTHONPATH=.:segment-anything-3 PYTHONDONTWRITEBYTECODE=1 \
   /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests \
-  tests/architecture \
-  tests/evaluation/test_visual_da_sam3_evaluation_cli.py
+  model_projects/dual_adapter_sam3/tests \
+  tests/architecture
 ```
 
 接著重跑真實 GPU smoke 一次，確認 README 中記錄的 telemetry 與最後程式一致。
@@ -646,9 +645,9 @@ PYTHONPATH=.:segment-anything-3 PYTHONDONTWRITEBYTECODE=1 \
 
 ```bash
 git diff --check
-rg -n "vendor_upstream_runtime" dual_adapter_sam3 scripts/evaluation/smoke_visual_da_sam3.py -g '*.py'
+rg -n "vendor_upstream_runtime" model_projects/dual_adapter_sam3 model_projects/dual_adapter_sam3/scripts/evaluation/smoke_visual_da_sam3.py -g '*.py'
 rg -n "5fold.*da_sam3|DualAdapterSam3\(" \
-  dual_adapter_sam3/train.py dual_adapter_sam3/evaluate_cross_validation.py
+  model_projects/dual_adapter_sam3/train.py model_projects/dual_adapter_sam3/evaluate_cross_validation.py
 git status --short
 ```
 
@@ -659,7 +658,7 @@ hardcoded path 或繞過 factory 的 model construction 必須清除。確認未
 ### 8.4 最後提交
 
 ```bash
-git add dual_adapter_sam3/README.md
+git add model_projects/dual_adapter_sam3/README.md
 git commit -m "docs: document visual DA-SAM3 variant"
 ```
 
@@ -678,7 +677,7 @@ git commit -m "docs: document visual DA-SAM3 variant"
 - train/evaluation CLI、run paths、links 都依明確 variant 運作；
 - 所有 CPU tests 與 batch-4 two-step 真實 GPU smoke 通過；
 - GPU smoke peak allocated VRAM 低於 24 GiB，且未建立任何 artifact；
-- runtime 不依賴 `sam3_adapter/vendor_upstream_runtime`；
+- runtime 不依賴 `model_projects/sam3_adapter/vendor_upstream_runtime`；
 - README、命令與實際程式一致；
 - `git diff --check` 通過，且只提交本任務檔案；
 - 未啟動正式 fold training 或 cross-validation evaluation。

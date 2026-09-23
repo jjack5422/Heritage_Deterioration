@@ -55,8 +55,8 @@ class SAM3Adapter(TiledTorchAdapter):
             checkpoint.base_checkpoint_sha256,
         )
 
-        from sam2_adapter.h0_core import load_trainable_state_dict
-        from sam3_adapter.sam3_adapter_model import Sam3AdapterModel
+        from crackseg_common.checkpoints import load_trainable_state_dict
+        from model_projects.sam3_adapter.model import Sam3AdapterModel
 
         model = Sam3AdapterModel(
             self.base_checkpoint,

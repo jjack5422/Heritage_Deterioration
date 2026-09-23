@@ -82,8 +82,8 @@ segmentation_web/
 ├── adapters/
 │   ├── base.py                    # Adapter 共用介面
 │   ├── dummy.py                   # 可執行的 Dummy 模型
-│   ├── sam2_adapter.py            # 尚待整合的 SAM2 占位
-│   └── resunet.py                 # 尚待整合的 ResUNet 占位
+│   ├── model_projects.sam2_adapter.py            # 尚待整合的 SAM2 占位
+│   └── resmodel_projects.unet.py                 # 尚待整合的 ResUNet 占位
 ├── imaging/
 │   └── image_processing.py        # 影像驗證、mask 與 overlay
 ├── tests/
@@ -99,9 +99,9 @@ segmentation_web/
 
 ```text
 /data/models/
-├── sam2_adapter/
+├── model_projects/sam2_adapter/
 │   └── *.pth / *.pt / *.ckpt
-└── resunet/
+└── resmodel_projects/unet/
     └── *.pth / *.pt / *.ckpt
 ```
 

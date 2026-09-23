@@ -58,15 +58,15 @@ segmentation_web/
 ├── adapters/
 │   ├── base.py
 │   ├── checkpoint_loading.py
-│   ├── convnext_unet.py
+│   ├── convnext_model_projects.unet.py
 │   ├── da_sam3.py
 │   ├── dummy.py
-│   ├── sam2_adapter.py
-│   ├── sam3_adapter.py
+│   ├── model_projects.sam2_adapter.py
+│   ├── model_projects.sam3_adapter.py
 │   ├── sam3_runtime.py
 │   ├── tiled_inference.py
 │   ├── unet_adapter.py
-│   └── resunet.py
+│   └── resmodel_projects.unet.py
 ├── imaging/
 │   └── image_processing.py
 └── tests/
@@ -126,11 +126,11 @@ cp .env.example .env
 MODEL_ROOT=/data/models
 SAM2_BASE_CHECKPOINT=segment-anything-2/checkpoints/sam2.1_hiera_large.pt
 SAM3_BASE_CHECKPOINT=segment-anything-3/checkpoints/sam3.pt
-SAM2_ADAPTER_WEIGHT_ROOT=sam2_adapter/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
-SAM3_ADAPTER_WEIGHT_ROOT=sam3_adapter/runs/<experiment>/5fold/sam3_adapter/fold0/artifacts/checkpoints
-DA_SAM3_WEIGHT_ROOT=dual_adapter_sam3/runs/<experiment>/5fold/visual_da_sam3/fold0/artifacts/checkpoints
-RESUNET50_WEIGHT_ROOT=unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
-CONVNEXT_UNET_WEIGHT_ROOT=unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
+SAM2_ADAPTER_WEIGHT_ROOT=model_projects/sam2_adapter/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
+SAM3_ADAPTER_WEIGHT_ROOT=model_projects/sam3_adapter/runs/<experiment>/5fold/model_projects/sam3_adapter/fold0/artifacts/checkpoints
+DA_SAM3_WEIGHT_ROOT=model_projects/dual_adapter_sam3/runs/<experiment>/5fold/visual_da_sam3/fold0/artifacts/checkpoints
+RESUNET50_WEIGHT_ROOT=model_projects/unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
+CONVNEXT_UNET_WEIGHT_ROOT=model_projects/unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
 INFERENCE_TILE_SIZE=512
 INFERENCE_STRIDE=384
 INFERENCE_BATCH_SIZE=1

@@ -12,8 +12,8 @@ from torch import nn
 
 from adapters.da_sam3 import DASAM3Adapter
 from config import Settings
-from dual_adapter_sam3 import checkpoints as checkpoints_module
-from dual_adapter_sam3 import model as model_module
+from model_projects.dual_adapter_sam3 import checkpoints as checkpoints_module
+from model_projects.dual_adapter_sam3 import model as model_module
 
 
 class _TwoChannelModel(nn.Module):

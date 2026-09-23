@@ -14,8 +14,8 @@ from config import Settings, WORKSPACE_ROOT, settings as default_settings
 
 DA_SAM3_MODEL_VARIANT = "visual_da_sam3"
 DA_SAM3_FULL_PIXEL_DECODER = True
-DEFAULT_CONCEPT_REGISTRY = WORKSPACE_ROOT / "dual_adapter_sam3/configs/concepts.yaml"
-DEFAULT_SPLIT_CONTRACT = WORKSPACE_ROOT / "dual_adapter_sam3/configs/splits.json"
+DEFAULT_CONCEPT_REGISTRY = WORKSPACE_ROOT / "model_projects/dual_adapter_sam3/configs/concepts.yaml"
+DEFAULT_SPLIT_CONTRACT = WORKSPACE_ROOT / "model_projects/dual_adapter_sam3/configs/splits.json"
 
 
 class DASAM3Adapter(TiledTorchAdapter):
@@ -56,10 +56,10 @@ class DASAM3Adapter(TiledTorchAdapter):
             )
         self._require_runtime_device()
 
-        from dual_adapter_sam3.checkpoints import load_adaptation_checkpoint
-        from dual_adapter_sam3.concepts import load_concept_registry
-        from dual_adapter_sam3.model import build_dual_adapter_model
-        from dual_adapter_sam3.splits import load_split_contract
+        from model_projects.dual_adapter_sam3.checkpoints import load_adaptation_checkpoint
+        from model_projects.dual_adapter_sam3.concepts import load_concept_registry
+        from model_projects.dual_adapter_sam3.model import build_dual_adapter_model
+        from model_projects.dual_adapter_sam3.splits import load_split_contract
 
         registry = load_concept_registry(self.concept_registry_path)
         split = load_split_contract(self.split_contract_path)
@@ -100,7 +100,7 @@ class DASAM3Adapter(TiledTorchAdapter):
         batch: torch.Tensor,
         deterioration_class: str | None,
     ) -> torch.Tensor:
-        from dual_adapter_sam3.concepts import CHANNEL_ORDER
+        from model_projects.dual_adapter_sam3.concepts import CHANNEL_ORDER
 
         if deterioration_class not in CHANNEL_ORDER:
             raise ValueError("Invalid deterioration class for DA-SAM3")

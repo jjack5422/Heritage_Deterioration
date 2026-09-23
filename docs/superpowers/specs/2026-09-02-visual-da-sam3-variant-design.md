@@ -36,7 +36,7 @@ DA-MoE 結合。舊模型的 forward path 必須保持不變，而且 schema ver
 - 不 fine-tune decoder，也不加入 decoder Adapter。
 - 不建立每個 concept 各自獨立的 image-backbone Adapter bank。
 - 不改變目前 Stage 1／Stage 2 checkpoint selection policy。
-- 不將 `sam3_adapter/vendor_upstream_runtime` 納入 runtime dependency。
+- 不將 `model_projects/sam3_adapter/vendor_upstream_runtime` 納入 runtime dependency。
 
 ## 對外 Variant 契約
 
@@ -94,7 +94,7 @@ vision forward。
 乾淨且由本 repository 維護的實作放在：
 
 ```text
-dual_adapter_sam3/visual_adapter.py
+model_projects/dual_adapter_sam3/visual_adapter.py
 ```
 
 此模組不得 import vendor runtime。
@@ -207,21 +207,21 @@ GPU smoke test 不寫 checkpoint，也不建立 run directory。
 
 ## 程式修改範圍
 
-- 新增 `dual_adapter_sam3/visual_adapter.py`，包含 high-pass prompt bank、
+- 新增 `model_projects/dual_adapter_sam3/visual_adapter.py`，包含 high-pass prompt bank、
   grad-compatible MLP path，以及 official-trunk injection。
-- 修改 `dual_adapter_sam3/sam3_integration.py`，支援選擇性建立 Visual Adapter
+- 修改 `model_projects/dual_adapter_sam3/sam3_integration.py`，支援選擇性建立 Visual Adapter
   variant，同時保留 legacy builder。
-- 修改 `dual_adapter_sam3/model.py`，加入 `VisualDualAdapterSam3`、variant metadata、
+- 修改 `model_projects/dual_adapter_sam3/model.py`，加入 `VisualDualAdapterSam3`、variant metadata、
   trainable-scope handling 與 model factory。
-- 修改 `dual_adapter_sam3/train.py`，加入 variant CLI/path selection，以及嚴格的
+- 修改 `model_projects/dual_adapter_sam3/train.py`，加入 variant CLI/path selection，以及嚴格的
   variant checkpoint state。
-- 修改 `dual_adapter_sam3/evaluate_cross_validation.py`，加入 variant-aware
+- 修改 `model_projects/dual_adapter_sam3/evaluate_cross_validation.py`，加入 variant-aware
   checkpoint locking、model construction、report links 與 evaluation paths。
-- 修改 `dual_adapter_sam3/configs/train.yaml`，加入固定 Visual Adapter defaults。
-- 新增 `scripts/evaluation/smoke_visual_da_sam3.py`，作為不產生 report 的
+- 修改 `model_projects/dual_adapter_sam3/configs/train.yaml`，加入固定 Visual Adapter defaults。
+- 新增 `model_projects/dual_adapter_sam3/scripts/evaluation/smoke_visual_da_sam3.py`，作為不產生 report 的
   architecture smoke test。
 - 依 repository tests 組織規則，在 `tests/architecture/` 新增架構測試。
-- 更新 `dual_adapter_sam3/README.md`，加入 variant 名稱與命令。
+- 更新 `model_projects/dual_adapter_sam3/README.md`，加入 variant 名稱與命令。
 
 ## 錯誤處理
 

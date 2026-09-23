@@ -25,10 +25,10 @@ threshold，並取得與原圖相同尺寸的二值 mask 與 overlay。Dummy 推
 
 | Web 模型 | 實驗 | 建構用 checkpoint | 任務 checkpoint schema |
 | --- | --- | --- | --- |
-| SAM2 Adapter | `sam2_adapter/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_sam2-adapter-hiera-large_seed42` | `segment-anything-2/checkpoints/sam2.1_hiera_large.pt` | `adaptation_state`、base-checkpoint hash 與 SAM2 metadata |
-| SAM3 Adapter | `sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42` | `segment-anything-3/checkpoints/sam3.pt` | `adaptation_state` 與 base-checkpoint hash；模型輸入為 512 |
-| ResUNet50 | `unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_resunet50_seed42` | 無 | 完整 `model` state 與可描述模型的訓練參數 |
-| ConvNeXt-Large U-Net | `unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_convnext-large_seed42` | 無 | 完整 `model` state 與可描述模型的訓練參數 |
+| SAM2 Adapter | `model_projects/sam2_adapter/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_sam2-adapter-hiera-large_seed42` | `segment-anything-2/checkpoints/sam2.1_hiera_large.pt` | `adaptation_state`、base-checkpoint hash 與 SAM2 metadata |
+| SAM3 Adapter | `model_projects/sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42` | `segment-anything-3/checkpoints/sam3.pt` | `adaptation_state` 與 base-checkpoint hash；模型輸入為 512 |
+| ResUNet50 | `model_projects/unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_resunet50_seed42` | 無 | 完整 `model` state 與可描述模型的訓練參數 |
+| ConvNeXt-Large U-Net | `model_projects/unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_convnext-large_seed42` | 無 | 完整 `model` state 與可描述模型的訓練參數 |
 
 Repository-relative 預設路徑讓目前 checkout 不需複製大型檔案即可使用。每個
 base checkpoint 與任務 checkpoint 目錄都可以透過環境變數覆寫。解析後的

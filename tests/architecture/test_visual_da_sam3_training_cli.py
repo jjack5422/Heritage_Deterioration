@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from dual_adapter_sam3.train import (
+from model_projects.dual_adapter_sam3.train import (
     _variant_run_root,
     _write_or_validate_model_contract,
     build_parser,

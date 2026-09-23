@@ -46,9 +46,9 @@
 
 ## 報表入口
 
-- [ConvNeXt-Tiny experiment](../unet/runs/2026-08-18_dataset-v2_3class_convnext-tiny_seed42/)
-- [ConvNeXt-Base experiment](../unet/runs/2026-08-18_dataset-v2_3class_convnext-base_seed42/)
-- [ConvNeXt-Large experiment](../unet/runs/2026-08-17_dataset-v2_3class_convnext-large_seed42/)
-- [ResNet50 experiment](../unet/runs/2026-08-17_dataset-v2_3class_resunet50_seed42/)
+- [ConvNeXt-Tiny experiment](../model_projects/unet/runs/2026-08-18_dataset-v2_3class_convnext-tiny_seed42/)
+- [ConvNeXt-Base experiment](../model_projects/unet/runs/2026-08-18_dataset-v2_3class_convnext-base_seed42/)
+- [ConvNeXt-Large experiment](../model_projects/unet/runs/2026-08-17_dataset-v2_3class_convnext-large_seed42/)
+- [ResNet50 experiment](../model_projects/unet/runs/2026-08-17_dataset-v2_3class_resunet50_seed42/)
 
 每個 experiment 的 `5fold/crack_craquelure/fold0..4/reports/index.html` 為 output-report dashboard；`tensorboard/images/` 內含 loss curve 與 Best/Worst PNG；`metrics/` 內含 epoch、per-image validation 與 outer-test 結果。

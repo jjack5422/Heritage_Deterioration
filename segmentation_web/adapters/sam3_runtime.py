@@ -10,7 +10,7 @@ from config import WORKSPACE_ROOT
 
 
 OFFICIAL_SAM3_ROOT = WORKSPACE_ROOT / "segment-anything-3"
-VENDOR_RUNTIME_ROOT = WORKSPACE_ROOT / "sam3_adapter/vendor_upstream_runtime"
+VENDOR_RUNTIME_ROOT = WORKSPACE_ROOT / "model_projects/sam3_adapter/vendor_upstream_runtime"
 VENDOR_MODELS_ROOT = VENDOR_RUNTIME_ROOT / "models"
 _RUNTIME_PATHS = (
     OFFICIAL_SAM3_ROOT,

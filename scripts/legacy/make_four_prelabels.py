@@ -19,8 +19,8 @@ IMAGES = [
     ROOT / "_data/image/KJTHT-SC-R-A4-3.jpg",
 ]
 
-CRAQ_PROB_DIR = ROOT / "unet/runs/predict-panels5-2026-06-10/prob"
-CRACK_PROB_DIR = ROOT / "unet/runs/prelabel-four-crack-2026-06-14/prob"
+CRAQ_PROB_DIR = ROOT / "model_projects/unet/runs/predict-panels5-2026-06-10/prob"
+CRACK_PROB_DIR = ROOT / "model_projects/unet/runs/prelabel-four-crack-2026-06-14/prob"
 OUT_DIR = ROOT / "prelabel_outputs/four_images_2026-06-14"
 
 CRACK_COLOR = np.array([255, 24, 3], dtype=np.uint8)

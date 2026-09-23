@@ -49,8 +49,8 @@ class SAM2Adapter(TiledTorchAdapter):
             checkpoint.base_checkpoint_sha256,
         )
 
-        from sam2_adapter.adapter_model import SAM2AdapterMaskDecoder
-        from sam2_adapter.h0_core import load_trainable_state_dict
+        from model_projects.sam2_adapter.adapter_model import SAM2AdapterMaskDecoder
+        from crackseg_common.checkpoints import load_trainable_state_dict
 
         model = SAM2AdapterMaskDecoder(
             checkpoint=self.base_checkpoint,

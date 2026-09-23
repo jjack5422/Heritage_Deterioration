@@ -17,10 +17,12 @@ import numpy as np
 from PIL import Image
 from torch.utils.tensorboard import SummaryWriter
 
-from sam2_adapter.metrics import pixel_accuracy
+from crackseg_common.binary_metrics import pixel_accuracy
 
 
-REPORTING_SCRIPTS = Path.home() / ".codex" / "skills" / "training-output-reporting" / "scripts"
+_SKILL_REPORTING_SCRIPTS = Path.home() / ".codex" / "skills" / "training-output-reporting" / "scripts"
+_LOCAL_REPORTING_SCRIPTS = Path(__file__).resolve().parents[2] / "scripts" / "reporting" / "training_output_reporting"
+REPORTING_SCRIPTS = _SKILL_REPORTING_SCRIPTS if _SKILL_REPORTING_SCRIPTS.is_dir() else _LOCAL_REPORTING_SCRIPTS
 
 
 def reconstruct_counts(

@@ -5,7 +5,7 @@
 **設計依據：**
 [`docs/superpowers/specs/2026-09-01-dual-adapter-sam3-multilabel-design.md`](../specs/2026-09-01-dual-adapter-sam3-multilabel-design.md)
 
-**目標：** 建立獨立的 `dual_adapter_sam3/` 專案，以完整 concept-conditioned
+**目標：** 建立獨立的 `model_projects/dual_adapter_sam3/` 專案，以完整 concept-conditioned
 SAM3、三層 DA-MoE、DER、DPE 與 Two-Stage Specialization，對 512 x 512 古蹟彩繪
 影像同時輸出 `crack_craquelure` 與 `loss` 兩張可重疊 masks，並完成 source-group
 5-fold 評估、必要訓練報告及免 prompt 的任意尺寸影像 CLI。
@@ -59,12 +59,12 @@ run 目錄已忽略版控，不提交 checkpoint、TensorBoard events 或逐圖 
 
 **新增檔案：**
 
-- `dual_adapter_sam3/__init__.py`
-- `dual_adapter_sam3/README.md`
-- `dual_adapter_sam3/concepts.py`
-- `dual_adapter_sam3/configs/concepts.yaml`
-- `dual_adapter_sam3/configs/train.yaml`
-- `dual_adapter_sam3/tests/test_concept_contract.py`
+- `model_projects/dual_adapter_sam3/__init__.py`
+- `model_projects/dual_adapter_sam3/README.md`
+- `model_projects/dual_adapter_sam3/concepts.py`
+- `model_projects/dual_adapter_sam3/configs/concepts.yaml`
+- `model_projects/dual_adapter_sam3/configs/train.yaml`
+- `model_projects/dual_adapter_sam3/tests/test_concept_contract.py`
 
 ### 1.1 先寫失敗測試
 
@@ -82,7 +82,7 @@ run 目錄已忽略版控，不提交 checkpoint、TensorBoard events 或逐圖 
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_concept_contract.py
+  model_projects/dual_adapter_sam3/tests/test_concept_contract.py
 ```
 
 預期：因 module/config 尚不存在而失敗。
@@ -113,11 +113,11 @@ labels；不依 YAML key 原始排列或系統路徑。`train.yaml` 只保存已
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_concept_contract.py
+  model_projects/dual_adapter_sam3/tests/test_concept_contract.py
 git diff --check
-git add dual_adapter_sam3/__init__.py dual_adapter_sam3/README.md \
-  dual_adapter_sam3/concepts.py dual_adapter_sam3/configs/concepts.yaml \
-  dual_adapter_sam3/configs/train.yaml dual_adapter_sam3/tests/test_concept_contract.py
+git add model_projects/dual_adapter_sam3/__init__.py model_projects/dual_adapter_sam3/README.md \
+  model_projects/dual_adapter_sam3/concepts.py model_projects/dual_adapter_sam3/configs/concepts.yaml \
+  model_projects/dual_adapter_sam3/configs/train.yaml model_projects/dual_adapter_sam3/tests/test_concept_contract.py
 git commit -m "feat: add monument concept contract"
 ```
 
@@ -127,12 +127,12 @@ git commit -m "feat: add monument concept contract"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/data.py`
-- `dual_adapter_sam3/tests/test_multilabel_targets.py`
+- `model_projects/dual_adapter_sam3/data.py`
+- `model_projects/dual_adapter_sam3/tests/test_multilabel_targets.py`
 
 **參考但不修改：**
 
-- `sam2_adapter/data.py`
+- `model_projects/sam2_adapter/data.py`
 - dataset 現有 manifest 與 source-group 欄位
 
 ### 2.1 先寫逐像素失敗測試
@@ -172,9 +172,9 @@ make_multilabel_targets(raw_mask: Tensor) -> tuple[Tensor, Tensor, Tensor]
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_multilabel_targets.py
+  model_projects/dual_adapter_sam3/tests/test_multilabel_targets.py
 git diff --check
-git add dual_adapter_sam3/data.py dual_adapter_sam3/tests/test_multilabel_targets.py
+git add model_projects/dual_adapter_sam3/data.py model_projects/dual_adapter_sam3/tests/test_multilabel_targets.py
 git commit -m "feat: add monument multilabel dataset"
 ```
 
@@ -184,10 +184,10 @@ git commit -m "feat: add monument multilabel dataset"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/splits.py`
-- `dual_adapter_sam3/configs/splits.json`（只在稽核通過或重建後產生）
-- `dual_adapter_sam3/tests/test_group_splits.py`
-- `dual_adapter_sam3/tests/fixtures/split_manifest.json`
+- `model_projects/dual_adapter_sam3/splits.py`
+- `model_projects/dual_adapter_sam3/configs/splits.json`（只在稽核通過或重建後產生）
+- `model_projects/dual_adapter_sam3/tests/test_group_splits.py`
+- `model_projects/dual_adapter_sam3/tests/fixtures/split_manifest.json`
 
 ### 3.1 先寫失敗測試
 
@@ -215,9 +215,9 @@ fold_membership(contract, outer_fold: int) -> FoldMembership
 加入 module CLI：
 
 ```bash
-PYTHONPATH=. /home/jacky/project/crackseg_env/bin/python -m dual_adapter_sam3.splits \
+PYTHONPATH=. /home/jacky/project/crackseg_env/bin/python -m model_projects.dual_adapter_sam3.splits \
   --dataset /home/jacky/project/datasets/dataset_clean_v2_merged_craquelure \
-  --output dual_adapter_sam3/configs/splits.json
+  --output model_projects/dual_adapter_sam3/configs/splits.json
 ```
 
 此命令只能讀標籤與 hashes，不載入模型或歷史 metrics。若既有 folds 通過就保存其
@@ -233,11 +233,11 @@ membership；若 coverage 不通過，先停止並輸出 audit 原因，必須�
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_group_splits.py
+  model_projects/dual_adapter_sam3/tests/test_group_splits.py
 git diff --check
-git add dual_adapter_sam3/splits.py dual_adapter_sam3/configs/splits.json \
-  dual_adapter_sam3/tests/test_group_splits.py \
-  dual_adapter_sam3/tests/fixtures/split_manifest.json
+git add model_projects/dual_adapter_sam3/splits.py model_projects/dual_adapter_sam3/configs/splits.json \
+  model_projects/dual_adapter_sam3/tests/test_group_splits.py \
+  model_projects/dual_adapter_sam3/tests/fixtures/split_manifest.json
 git commit -m "feat: lock monument group folds"
 ```
 
@@ -250,10 +250,10 @@ git commit -m "feat: lock monument group folds"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/losses.py`
-- `dual_adapter_sam3/metrics.py`
-- `dual_adapter_sam3/tests/test_losses.py`
-- `dual_adapter_sam3/tests/test_metrics.py`
+- `model_projects/dual_adapter_sam3/losses.py`
+- `model_projects/dual_adapter_sam3/metrics.py`
+- `model_projects/dual_adapter_sam3/tests/test_losses.py`
+- `model_projects/dual_adapter_sam3/tests/test_metrics.py`
 
 ### 4.1 先寫 loss 失敗測試
 
@@ -295,10 +295,10 @@ batch F1。
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_losses.py dual_adapter_sam3/tests/test_metrics.py
+  model_projects/dual_adapter_sam3/tests/test_losses.py model_projects/dual_adapter_sam3/tests/test_metrics.py
 git diff --check
-git add dual_adapter_sam3/losses.py dual_adapter_sam3/metrics.py \
-  dual_adapter_sam3/tests/test_losses.py dual_adapter_sam3/tests/test_metrics.py
+git add model_projects/dual_adapter_sam3/losses.py model_projects/dual_adapter_sam3/metrics.py \
+  model_projects/dual_adapter_sam3/tests/test_losses.py model_projects/dual_adapter_sam3/tests/test_metrics.py
 git commit -m "feat: add masked multilabel objectives"
 ```
 
@@ -308,9 +308,9 @@ git commit -m "feat: add masked multilabel objectives"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/da_moe.py`
-- `dual_adapter_sam3/tests/test_dpe_gradients.py`
-- `dual_adapter_sam3/tests/test_da_moe_routing.py`
+- `model_projects/dual_adapter_sam3/da_moe.py`
+- `model_projects/dual_adapter_sam3/tests/test_dpe_gradients.py`
+- `model_projects/dual_adapter_sam3/tests/test_da_moe_routing.py`
 
 ### 5.1 DPE red tests
 
@@ -362,12 +362,12 @@ RouterDiagnostics
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_dpe_gradients.py \
-  dual_adapter_sam3/tests/test_da_moe_routing.py
+  model_projects/dual_adapter_sam3/tests/test_dpe_gradients.py \
+  model_projects/dual_adapter_sam3/tests/test_da_moe_routing.py
 git diff --check
-git add dual_adapter_sam3/da_moe.py \
-  dual_adapter_sam3/tests/test_dpe_gradients.py \
-  dual_adapter_sam3/tests/test_da_moe_routing.py
+git add model_projects/dual_adapter_sam3/da_moe.py \
+  model_projects/dual_adapter_sam3/tests/test_dpe_gradients.py \
+  model_projects/dual_adapter_sam3/tests/test_da_moe_routing.py
 git commit -m "feat: implement hierarchical DA MoE blocks"
 ```
 
@@ -377,8 +377,8 @@ git commit -m "feat: implement hierarchical DA MoE blocks"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/sam3_integration.py`
-- `dual_adapter_sam3/tests/test_sam3_integration.py`
+- `model_projects/dual_adapter_sam3/sam3_integration.py`
+- `model_projects/dual_adapter_sam3/tests/test_sam3_integration.py`
 
 **參考但不修改：**
 
@@ -386,7 +386,7 @@ git commit -m "feat: implement hierarchical DA MoE blocks"
 - `segment-anything-3/sam3/model/encoder.py`
 - `segment-anything-3/sam3/model/sam3_image.py`
 - `segment-anything-3/sam3/model/maskformer_segmentation.py`
-- `sam3_adapter/sam3_adapter_model.py` 的 512 RoPE/grid retarget 經驗
+- `model_projects/sam3_adapter/model.py` 的 512 RoPE/grid retarget 經驗
 
 ### 6.1 先以 fake SAM3 寫 red tests
 
@@ -426,7 +426,7 @@ integration；不得 silent fallback 到 prompt-free adapter runtime。
 ```bash
 RUN_REAL_SAM3_TESTS=1 PYTHONPATH=.:segment-anything-3 \
   /home/jacky/project/crackseg_env/bin/pytest -q -s \
-  dual_adapter_sam3/tests/test_sam3_integration.py
+  model_projects/dual_adapter_sam3/tests/test_sam3_integration.py
 ```
 
 此階段只 build/inspect，不做 optimizer step。斷言 checkpoint SHA-256、fusion layer
@@ -437,10 +437,10 @@ count、indices、512 grid、parameter freeze scope 與 load mismatches 符合 a
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_sam3_integration.py
+  model_projects/dual_adapter_sam3/tests/test_sam3_integration.py
 git diff --check
-git add dual_adapter_sam3/sam3_integration.py \
-  dual_adapter_sam3/tests/test_sam3_integration.py
+git add model_projects/dual_adapter_sam3/sam3_integration.py \
+  model_projects/dual_adapter_sam3/tests/test_sam3_integration.py
 git commit -m "feat: integrate 512 concept SAM3"
 ```
 
@@ -450,8 +450,8 @@ git commit -m "feat: integrate 512 concept SAM3"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/model.py`
-- `dual_adapter_sam3/tests/test_model_contract.py`
+- `model_projects/dual_adapter_sam3/model.py`
+- `model_projects/dual_adapter_sam3/tests/test_model_contract.py`
 
 ### 7.1 先寫 model red tests
 
@@ -493,7 +493,7 @@ MoE layers、experts、top-k、rank、stage。
 ```bash
 RUN_REAL_SAM3_TESTS=1 PYTHONPATH=.:segment-anything-3 \
   /home/jacky/project/crackseg_env/bin/pytest -q -s \
-  dual_adapter_sam3/tests/test_model_contract.py
+  model_projects/dual_adapter_sam3/tests/test_model_contract.py
 ```
 
 先用 batch 1、無 backward，確認兩張 512 logits、vision call count=1、semantic head path
@@ -503,9 +503,9 @@ RUN_REAL_SAM3_TESTS=1 PYTHONPATH=.:segment-anything-3 \
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_model_contract.py
+  model_projects/dual_adapter_sam3/tests/test_model_contract.py
 git diff --check
-git add dual_adapter_sam3/model.py dual_adapter_sam3/tests/test_model_contract.py
+git add model_projects/dual_adapter_sam3/model.py model_projects/dual_adapter_sam3/tests/test_model_contract.py
 git commit -m "feat: add dual concept SAM3 model"
 ```
 
@@ -515,9 +515,9 @@ git commit -m "feat: add dual concept SAM3 model"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/training.py`
-- `dual_adapter_sam3/tests/test_training_stages.py`
-- `dual_adapter_sam3/tests/test_hard_pool_sampler.py`
+- `model_projects/dual_adapter_sam3/training.py`
+- `model_projects/dual_adapter_sam3/tests/test_training_stages.py`
+- `model_projects/dual_adapter_sam3/tests/test_hard_pool_sampler.py`
 
 ### 8.1 Stage scope red tests
 
@@ -564,12 +564,12 @@ Router collapse 規則保存跨 epoch state：任一 layer 的任一 expert 聚�
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_training_stages.py \
-  dual_adapter_sam3/tests/test_hard_pool_sampler.py
+  model_projects/dual_adapter_sam3/tests/test_training_stages.py \
+  model_projects/dual_adapter_sam3/tests/test_hard_pool_sampler.py
 git diff --check
-git add dual_adapter_sam3/training.py \
-  dual_adapter_sam3/tests/test_training_stages.py \
-  dual_adapter_sam3/tests/test_hard_pool_sampler.py
+git add model_projects/dual_adapter_sam3/training.py \
+  model_projects/dual_adapter_sam3/tests/test_training_stages.py \
+  model_projects/dual_adapter_sam3/tests/test_hard_pool_sampler.py
 git commit -m "feat: add DA SAM3 specialization stages"
 ```
 
@@ -583,10 +583,10 @@ derived reporting。
 
 **新增檔案：**
 
-- `dual_adapter_sam3/train.py`
-- `dual_adapter_sam3/reporting.py`
-- `dual_adapter_sam3/tests/test_training_loop.py`
-- `dual_adapter_sam3/tests/test_reporting_contract.py`
+- `model_projects/dual_adapter_sam3/train.py`
+- `model_projects/dual_adapter_sam3/reporting.py`
+- `model_projects/dual_adapter_sam3/tests/test_training_loop.py`
+- `model_projects/dual_adapter_sam3/tests/test_reporting_contract.py`
 
 **優先重用：** `crackseg_common.reporting` 與 skill 提供的 reporting scripts。
 
@@ -610,8 +610,8 @@ derived reporting。
 固定：
 
 ```text
-dual_adapter_sam3/runs/<experiment_id>/info/
-dual_adapter_sam3/runs/<experiment_id>/5fold/da_sam3/fold<k>/
+model_projects/dual_adapter_sam3/runs/<experiment_id>/info/
+model_projects/dual_adapter_sam3/runs/<experiment_id>/5fold/da_sam3/fold<k>/
 ```
 
 每 fold 的 `config/`、`logs/`、`tensorboard/`、`metrics/`、`artifacts/`、`reports/`
@@ -621,12 +621,12 @@ dual_adapter_sam3/runs/<experiment_id>/5fold/da_sam3/fold<k>/
 ### 9.3 實作 CLI 合約
 
 ```bash
-python -m dual_adapter_sam3.train \
+python -m model_projects.dual_adapter_sam3.train \
   --stage stage1 \
   --fold 0 \
   --experiment-id 2026-09-01_dual-adapter-sam3-multilabel-512_seed42
 
-python -m dual_adapter_sam3.train \
+python -m model_projects.dual_adapter_sam3.train \
   --stage stage2 \
   --fold 0 \
   --experiment-id 2026-09-01_dual-adapter-sam3-multilabel-512_seed42 \
@@ -640,12 +640,12 @@ run，必須使用不同 experiment ID，不能污染 full run。
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_training_loop.py \
-  dual_adapter_sam3/tests/test_reporting_contract.py
+  model_projects/dual_adapter_sam3/tests/test_training_loop.py \
+  model_projects/dual_adapter_sam3/tests/test_reporting_contract.py
 git diff --check
-git add dual_adapter_sam3/train.py dual_adapter_sam3/reporting.py \
-  dual_adapter_sam3/tests/test_training_loop.py \
-  dual_adapter_sam3/tests/test_reporting_contract.py
+git add model_projects/dual_adapter_sam3/train.py model_projects/dual_adapter_sam3/reporting.py \
+  model_projects/dual_adapter_sam3/tests/test_training_loop.py \
+  model_projects/dual_adapter_sam3/tests/test_reporting_contract.py
 git commit -m "feat: add DA SAM3 training workflow"
 ```
 
@@ -658,8 +658,8 @@ git commit -m "feat: add DA SAM3 training workflow"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/evaluate.py`
-- `dual_adapter_sam3/tests/test_evaluation_contract.py`
+- `model_projects/dual_adapter_sam3/evaluate.py`
+- `model_projects/dual_adapter_sam3/tests/test_evaluation_contract.py`
 
 ### 10.1 先寫 evaluation red tests
 
@@ -684,10 +684,10 @@ git commit -m "feat: add DA SAM3 training workflow"
 提供兩個明確 phase：
 
 ```bash
-python -m dual_adapter_sam3.evaluate --phase validation --fold 0 \
+python -m model_projects.dual_adapter_sam3.evaluate --phase validation --fold 0 \
   --checkpoint <selected-checkpoint>
 
-python -m dual_adapter_sam3.evaluate --phase outer-test --fold 0 \
+python -m model_projects.dual_adapter_sam3.evaluate --phase outer-test --fold 0 \
   --checkpoint <locked-selected-checkpoint>
 ```
 
@@ -699,10 +699,10 @@ validation phase 可建立 qualitative/reporting；outer-test phase 只在 lock 
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_evaluation_contract.py
+  model_projects/dual_adapter_sam3/tests/test_evaluation_contract.py
 git diff --check
-git add dual_adapter_sam3/evaluate.py \
-  dual_adapter_sam3/tests/test_evaluation_contract.py
+git add model_projects/dual_adapter_sam3/evaluate.py \
+  model_projects/dual_adapter_sam3/tests/test_evaluation_contract.py
 git commit -m "feat: add locked five fold evaluation"
 ```
 
@@ -712,10 +712,10 @@ git commit -m "feat: add locked five fold evaluation"
 
 **新增檔案：**
 
-- `dual_adapter_sam3/tiled_inference.py`
-- `dual_adapter_sam3/infer.py`
-- `dual_adapter_sam3/tests/test_tiled_inference.py`
-- `dual_adapter_sam3/tests/test_cli_outputs.py`
+- `model_projects/dual_adapter_sam3/tiled_inference.py`
+- `model_projects/dual_adapter_sam3/infer.py`
+- `model_projects/dual_adapter_sam3/tests/test_tiled_inference.py`
+- `model_projects/dual_adapter_sam3/tests/test_cli_outputs.py`
 
 ### 11.1 先寫 tiling red tests
 
@@ -750,7 +750,7 @@ stage 都明確失敗，不產生全零 fallback masks。
 
 ```bash
 PYTHONPATH=.:segment-anything-3 /home/jacky/project/crackseg_env/bin/python \
-  -m dual_adapter_sam3.infer \
+  -m model_projects.dual_adapter_sam3.infer \
   --checkpoint <stage2_best.pt> \
   --input <image-or-folder> \
   --output-dir <new-directory>
@@ -763,12 +763,12 @@ flag。
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests/test_tiled_inference.py \
-  dual_adapter_sam3/tests/test_cli_outputs.py
+  model_projects/dual_adapter_sam3/tests/test_tiled_inference.py \
+  model_projects/dual_adapter_sam3/tests/test_cli_outputs.py
 git diff --check
-git add dual_adapter_sam3/tiled_inference.py dual_adapter_sam3/infer.py \
-  dual_adapter_sam3/tests/test_tiled_inference.py \
-  dual_adapter_sam3/tests/test_cli_outputs.py
+git add model_projects/dual_adapter_sam3/tiled_inference.py model_projects/dual_adapter_sam3/infer.py \
+  model_projects/dual_adapter_sam3/tests/test_tiled_inference.py \
+  model_projects/dual_adapter_sam3/tests/test_cli_outputs.py
 git commit -m "feat: add automatic dual mask inference"
 ```
 
@@ -780,7 +780,7 @@ git commit -m "feat: add automatic dual mask inference"
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests
+  model_projects/dual_adapter_sam3/tests
 ```
 
 預期：不需要 checkpoint 的 tests 全部通過，real-SAM3 tests 清楚標示 skipped。
@@ -790,8 +790,8 @@ PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
 ```bash
 RUN_REAL_SAM3_TESTS=1 PYTHONPATH=.:segment-anything-3 \
   /home/jacky/project/crackseg_env/bin/pytest -q -s \
-  dual_adapter_sam3/tests/test_sam3_integration.py \
-  dual_adapter_sam3/tests/test_model_contract.py
+  model_projects/dual_adapter_sam3/tests/test_sam3_integration.py \
+  model_projects/dual_adapter_sam3/tests/test_model_contract.py
 ```
 
 記錄 checkpoint hash、parameter counts、trainable names、MoE indices、兩 prompt output
@@ -846,11 +846,11 @@ Stage 1 與 Stage 2 各跑 2 epochs；Stage 2 仍必須由 smoke Stage 1 best �
 
 ```bash
 PYTHONPATH=.:segment-anything-3 /home/jacky/project/crackseg_env/bin/python \
-  -m dual_adapter_sam3.train --stage stage1 --fold 0 --smoke-epochs 2 \
+  -m model_projects.dual_adapter_sam3.train --stage stage1 --fold 0 --smoke-epochs 2 \
   --experiment-id 2026-09-01_dual-adapter-sam3-multilabel-512-smoke_seed42
 
 PYTHONPATH=.:segment-anything-3 /home/jacky/project/crackseg_env/bin/python \
-  -m dual_adapter_sam3.train --stage stage2 --fold 0 --smoke-epochs 2 \
+  -m model_projects.dual_adapter_sam3.train --stage stage2 --fold 0 --smoke-epochs 2 \
   --experiment-id 2026-09-01_dual-adapter-sam3-multilabel-512-smoke_seed42 \
   --stage1-checkpoint <smoke-stage1-best-path>
 ```
@@ -956,7 +956,7 @@ events、原始 dataset 或大量 images 的 compact report commit。
 
 ```bash
 PYTHONPATH=. /home/jacky/project/crackseg_env/bin/pytest -q \
-  dual_adapter_sam3/tests
+  model_projects/dual_adapter_sam3/tests
 git diff --check
 git status --short
 ```

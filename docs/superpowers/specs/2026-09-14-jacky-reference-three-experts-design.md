@@ -109,7 +109,7 @@ Experiment ID：
 Run root：
 
 ```text
-sam3_adapter/runs/<experiment_id>/
+model_projects/sam3_adapter/runs/<experiment_id>/
 ├── info/
 └── 1fold/
     ├── scratch_crack/fold0/

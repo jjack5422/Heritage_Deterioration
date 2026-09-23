@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 import torch
 
-from dual_adapter_sam3.visual_adapter import (
+from model_projects.dual_adapter_sam3.visual_adapter import (
     HandcraftedFeaturePyramid,
     VisualAdapterBank,
     VisualAdapterConfig,

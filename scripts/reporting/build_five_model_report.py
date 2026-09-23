@@ -39,7 +39,7 @@ def default_model_specs(repo_root: Path) -> list[ModelSpec]:
             "ResNet50 U-Net",
             "U-Net",
             repo_root
-            / "unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42",
+            / "model_projects/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42",
             "#0f766e",
         ),
         ModelSpec(
@@ -47,7 +47,7 @@ def default_model_specs(repo_root: Path) -> list[ModelSpec]:
             "ConvNeXt-Large U-Net",
             "U-Net",
             repo_root
-            / "unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42",
+            / "model_projects/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42",
             "#2563eb",
         ),
         ModelSpec(
@@ -55,7 +55,7 @@ def default_model_specs(repo_root: Path) -> list[ModelSpec]:
             "SegFormer-B5",
             "Transformer",
             repo_root
-            / "segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42",
+            / "model_projects/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42",
             "#7c3aed",
         ),
         ModelSpec(
@@ -63,7 +63,7 @@ def default_model_specs(repo_root: Path) -> list[ModelSpec]:
             "SAM2-SAC",
             "SAM2",
             repo_root
-            / "sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42",
+            / "model_projects/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42",
             "#dc2626",
         ),
         ModelSpec(
@@ -71,7 +71,7 @@ def default_model_specs(repo_root: Path) -> list[ModelSpec]:
             "SAM2-Adapter",
             "SAM2",
             repo_root
-            / "sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42",
+            / "model_projects/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42",
             "#d97706",
         ),
     ]
@@ -413,13 +413,17 @@ def _model_sections(models: Sequence[dict], loss_data_uris: Mapping[str, str]) -
         for fold in model["folds"]:
             loss_key = f'{model["key"]}/fold{fold["fold"]}'
             loss_data_uri = loss_data_uris[loss_key]
+            selected_epoch = fold["selected_epoch"]
+            selected_epoch_label = (
+                "epoch —" if selected_epoch is None else f"epoch {selected_epoch}"
+            )
             loss_figures.append(
                 '<figure class="loss-figure">'
                 f'<a href="{loss_data_uri}" target="_blank">'
                 f'<img src="{loss_data_uri}" '
                 f'alt="{html.escape(model["name"])} Fold {fold["fold"]} train and validation loss curve"></a>'
                 f'<figcaption><strong>Fold {fold["fold"]}</strong><span>{fold["epochs"]} epochs · '
-                f'selected {"epoch —" if fold["selected_epoch"] is None else f"epoch {fold["selected_epoch"]}"}</span></figcaption>'
+                f"selected {selected_epoch_label}</span></figcaption>"
                 "</figure>"
             )
         headers = "".join(f"<th scope=\"col\">{label}</th>" for _, label in METRICS)

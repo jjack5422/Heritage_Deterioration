@@ -2,8 +2,8 @@ from pathlib import Path
 
 import pytest
 
-from dual_adapter_sam3.decoder_calibration import CALIBRATION_EXPERT
-from dual_adapter_sam3.train_decoder_calibration import (
+from model_projects.dual_adapter_sam3.decoder_calibration import CALIBRATION_EXPERT
+from model_projects.dual_adapter_sam3.train_decoder_calibration import (
     DEFAULT_EXPERIMENT,
     DEFAULT_SOURCE_EXPERIMENT,
     build_parser,

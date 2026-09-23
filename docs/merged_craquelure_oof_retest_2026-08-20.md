@@ -48,11 +48,11 @@ domain instability, not a failure unique to one implementation.
 
 ## Durable summaries
 
-- ResNet50 U-Net: `unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/info/oof_summary.json`
-- ConvNeXt-Large U-Net: `unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/info/oof_summary.json`
-- SegFormer-B5: `segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/info/oof_summary.json`
-- SAM2-SAC: `sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/info/oof_summary.json`
-- SAM2-Adapter: `sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/info/oof_summary.json`
+- ResNet50 U-Net: `model_projects/unet/runs/2026-08-20_merged-craquelure_oof-retest_resunet50_seed42/info/oof_summary.json`
+- ConvNeXt-Large U-Net: `model_projects/unet/runs/2026-08-20_merged-craquelure_oof-retest_convnext-large_seed42/info/oof_summary.json`
+- SegFormer-B5: `model_projects/segformer/runs/2026-08-20_merged-craquelure_oof-retest_segformer-b5_seed42/info/oof_summary.json`
+- SAM2-SAC: `model_projects/sam2_sac/runs/2026-08-20_merged-craquelure_oof-retest_sam2-sac_seed42/info/oof_summary.json`
+- SAM2-Adapter: `model_projects/sam2_adapter/runs/2026-08-20_merged-craquelure_oof-retest_sam2-adapter_seed42/info/oof_summary.json`
 
 Each fold directory contains the source training scalars reconstructed in a
 new TensorBoard event file, merged-label validation qualitative artifacts,

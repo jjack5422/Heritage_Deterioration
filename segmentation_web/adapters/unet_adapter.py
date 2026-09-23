@@ -46,7 +46,7 @@ class UnetAdapter(TiledTorchAdapter):
             expected_backbone=self.expected_backbone,
         )
 
-        from unet.src.unet_model import build_resunet
+        from model_projects.unet.src.unet_model import build_resunet
 
         model = build_resunet(
             encoder=checkpoint.encoder,

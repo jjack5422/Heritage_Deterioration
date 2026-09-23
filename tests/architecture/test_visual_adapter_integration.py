@@ -6,14 +6,16 @@ import pytest
 import torch
 from torch import nn
 
-from dual_adapter_sam3.sam3_integration import activate_official_sam3
-from dual_adapter_sam3.visual_adapter import (
+from model_projects.dual_adapter_sam3.sam3_integration import SAM3_ROOT, activate_official_sam3
+from model_projects.dual_adapter_sam3.visual_adapter import (
     VisualAdapterConfig,
     grad_compatible_mlp_forward,
     inject_visual_adapter,
     install_grad_compatible_mlp_forward,
     validate_official_vit_contract,
 )
+
+OFFICIAL_SAM3_AVAILABLE = (SAM3_ROOT / "sam3").is_dir()
 
 
 class _TinyMlp(nn.Module):
@@ -76,6 +78,10 @@ def _official_mlp() -> nn.Module:
     return mlp
 
 
+@pytest.mark.skipif(
+    not OFFICIAL_SAM3_AVAILABLE,
+    reason="external official SAM3 source checkout is not available",
+)
 def test_grad_compatible_mlp_matches_official_no_grad_result() -> None:
     torch.manual_seed(11)
     mlp = _official_mlp().to(dtype=torch.bfloat16)
@@ -88,6 +94,10 @@ def test_grad_compatible_mlp_matches_official_no_grad_result() -> None:
     torch.testing.assert_close(actual, expected, rtol=1e-2, atol=1e-2)
 
 
+@pytest.mark.skipif(
+    not OFFICIAL_SAM3_AVAILABLE,
+    reason="external official SAM3 source checkout is not available",
+)
 def test_grad_compatible_mlp_propagates_input_grad_but_not_weight_grad() -> None:
     mlp = _official_mlp()
     inputs = torch.randn(2, 3, 8, requires_grad=True)
@@ -161,6 +171,6 @@ def test_mlp_installation_keeps_weights_frozen_and_allows_trunk_input_grad() -> 
 
 def test_runtime_does_not_import_vendor_upstream() -> None:
     project_root = Path(__file__).resolve().parents[2]
-    python_sources = (project_root / "dual_adapter_sam3").glob("*.py")
+    python_sources = (project_root / "model_projects" / "dual_adapter_sam3").glob("*.py")
     offending = [path.name for path in python_sources if "vendor_upstream_runtime" in path.read_text()]
     assert offending == []

@@ -7,7 +7,7 @@ import pytest
 import torch
 from torch import nn
 
-from dual_adapter_sam3.train import (
+from model_projects.dual_adapter_sam3.train import (
     _adaptation_state,
     _expected_adaptation_keys,
     _load_adaptation,

@@ -14,8 +14,8 @@ Specialization 套用到兩類古蹟劣化：
 不輸入 prompt；系統從版本化 concept registry 自動載入兩個固定英文
 prompts，輸出兩張獨立 probability maps 與 binary masks。
 
-第一版只建立獨立的 `dual_adapter_sam3/` 研究專案，不修改既有
-`sam3_adapter/` 單類、prompt-free 實驗合約。
+第一版只建立獨立的 `model_projects/dual_adapter_sam3/` 研究專案，不修改既有
+`model_projects/sam3_adapter/` 單類、prompt-free 實驗合約。
 
 ## 2. 已鎖定範圍
 
@@ -50,7 +50,7 @@ Macro-F1 baseline。額外 baselines 與 ablations 等主方法確認可學習�
 新專案位於：
 
 ```text
-dual_adapter_sam3/
+model_projects/dual_adapter_sam3/
 ├── README.md
 ├── __init__.py
 ├── concepts.py
@@ -86,7 +86,7 @@ dual_adapter_sam3/
 遵守以下邊界：
 
 - 不複製 dataset 或 SAM3 checkpoint 到新專案。
-- 不修改 `sam3_adapter/` 的模型、runs 或既有報告。
+- 不修改 `model_projects/sam3_adapter/` 的模型、runs 或既有報告。
 - 不直接修改忽略版控的 SAM3 vendor/upstream 原始碼；所有 512 retarget、
   context extraction 與 MoE injection 都由 `sam3_integration.py` 明確完成。
 - 共用環境為 `/home/jacky/project/crackseg_env`。
@@ -492,7 +492,7 @@ Macro-F1 = (F1_crack_craquelure + F1_loss) / 2
 遵守 repository 指定的 `training-output-reporting` skill。Run layout：
 
 ```text
-dual_adapter_sam3/runs/<experiment_id>/
+model_projects/dual_adapter_sam3/runs/<experiment_id>/
 ├── info/
 │   ├── experiment.json
 │   ├── dataset_contract.json
@@ -581,7 +581,7 @@ macro-ranked combined review。所有 TensorBoard PNG、CSV/JSON 與 HTML 都由
 正式介面：
 
 ```bash
-python -m dual_adapter_sam3.infer \
+python -m model_projects.dual_adapter_sam3.infer \
   --checkpoint <stage2_best.pt> \
   --input <image-or-folder> \
   --output-dir <directory>

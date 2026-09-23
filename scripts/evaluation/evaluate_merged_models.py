@@ -34,8 +34,8 @@ from torch import Tensor
 from torch.utils.data import DataLoader, Dataset
 from torch.utils.tensorboard import SummaryWriter
 
-from sam2_sac.metrics import binary_summary, counts_summary
-from sam2_sac.reporting import (
+from model_projects.sam2_sac.metrics import binary_summary, counts_summary
+from model_projects.sam2_sac.reporting import (
     EpochReporter,
     RunLayout,
     append_log,
@@ -47,6 +47,7 @@ from sam2_sac.reporting import (
 
 
 WORKSPACE_ROOT = Path(__file__).resolve().parents[2]
+MODEL_PROJECTS_ROOT = WORKSPACE_ROOT / "model_projects"
 DEFAULT_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_clean_v2_merged_craquelure"
 DEFAULT_SOURCE_DATASET = WORKSPACE_ROOT / "datasets" / "dataset_v2_3class"
 DEFAULT_SAM2_CHECKPOINT = (
@@ -266,14 +267,11 @@ class SMPPredictor:
         *,
         model_family: str,
     ) -> None:
-        source_path = WORKSPACE_ROOT / model_family / "src"
-        if str(source_path) not in sys.path:
-            sys.path.insert(0, str(source_path))
 
         payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
         arguments = payload["args"]
         if model_family == "unet":
-            from unet_model import backbone_profile, build_resunet
+            from model_projects.unet.src.unet_model import backbone_profile, build_resunet
 
             profile = backbone_profile(str(arguments["backbone"]))
             encoder = str(arguments.get("encoder") or profile.encoder)
@@ -283,7 +281,7 @@ class SMPPredictor:
                 num_classes=3,
             )
         elif model_family == "segformer":
-            from segformer_model import backbone_profile, build_segformer
+            from model_projects.segformer.src.segformer_model import backbone_profile, build_segformer
 
             profile = backbone_profile(str(arguments["backbone"]))
             encoder = str(arguments.get("encoder") or profile.encoder)
@@ -323,10 +321,10 @@ class SMPPredictor:
 
 class SAM2SACPredictor:
     def __init__(self, checkpoint: Path, base_checkpoint: Path, device: torch.device) -> None:
-        from sam2_sac.h0_core import (
+        from crackseg_common.checkpoints import load_trainable_state_dict
+        from model_projects.sam2_sac.h0_core import (
             NativeSAM2MaskDecoder,
             freeze_except_layer_norm,
-            load_trainable_state_dict,
         )
 
         payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
@@ -383,8 +381,8 @@ class SAM2AdapterPredictor:
         base_checkpoint: Path,
         device: torch.device,
     ) -> None:
-        from sam2_adapter.adapter_model import SAM2AdapterMaskDecoder
-        from sam2_adapter.h0_core import load_trainable_state_dict
+        from model_projects.sam2_adapter.adapter_model import SAM2AdapterMaskDecoder
+        from crackseg_common.checkpoints import load_trainable_state_dict
 
         base_hash = _sha256(base_checkpoint)
         self.device = device
@@ -430,7 +428,7 @@ class SAM2AdapterPredictor:
 
 
 def _checkpoint_paths(spec: ModelSpec, fold: int) -> dict[str, Path]:
-    root = WORKSPACE_ROOT / spec.project / "runs" / spec.source_experiment / "5fold"
+    root = MODEL_PROJECTS_ROOT / spec.project / "runs" / spec.source_experiment / "5fold"
     return {
         expert: root / expert / f"fold{fold}" / "artifacts" / "checkpoints" / "best.pt"
         for expert in spec.checkpoint_experts
@@ -537,7 +535,7 @@ def _evaluate(
 
 
 def _history_rows(spec: ModelSpec, fold: int) -> list[dict[str, float | int]]:
-    root = WORKSPACE_ROOT / spec.project / "runs" / spec.source_experiment / "5fold"
+    root = MODEL_PROJECTS_ROOT / spec.project / "runs" / spec.source_experiment / "5fold"
     by_epoch: dict[int, list[dict[str, float]]] = defaultdict(list)
     for expert in spec.history_experts:
         path = root / expert / f"fold{fold}" / "metrics" / "epochs.csv"
@@ -743,7 +741,7 @@ def _update_experiment_info(
     source_dataset: Path,
     completed_folds: Sequence[int],
 ) -> None:
-    root = WORKSPACE_ROOT / spec.project / "runs" / spec.experiment_id
+    root = MODEL_PROJECTS_ROOT / spec.project / "runs" / spec.experiment_id
     write_json(
         root / "info" / "experiment.json",
         {
@@ -765,7 +763,7 @@ def _update_experiment_info(
 
 
 def _aggregate_folds(spec: ModelSpec, folds: Sequence[int]) -> dict[str, Any]:
-    root = WORKSPACE_ROOT / spec.project / "runs" / spec.experiment_id
+    root = MODEL_PROJECTS_ROOT / spec.project / "runs" / spec.experiment_id
     total = [0, 0, 0]
     panel_counts: dict[str, tuple[int, int, int]] = {}
     total_loss_numerator = 0.0
@@ -825,7 +823,7 @@ def run_model(
     num_workers: int,
     allow_existing: bool,
 ) -> dict[str, Any]:
-    experiment_root = WORKSPACE_ROOT / spec.project / "runs" / spec.experiment_id
+    experiment_root = MODEL_PROJECTS_ROOT / spec.project / "runs" / spec.experiment_id
     completed: list[int] = []
     for fold in folds:
         run_root = experiment_root / "5fold" / "craquelure" / f"fold{fold}"

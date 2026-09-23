@@ -14,26 +14,26 @@ PROJECT_ROOT = Path(__file__).resolve().parent
 WORKSPACE_ROOT = PROJECT_ROOT.parent
 
 DEFAULT_SAM2_ADAPTER_WEIGHT_ROOT = WORKSPACE_ROOT / (
-    "sam2_adapter/runs/"
+    "model_projects/sam2_adapter/runs/"
     "2026-08-22_merged-crack_0820-splits_bg1-fg2_"
     "sam2-adapter-hiera-large_seed42/5fold/foreground/fold0/"
     "artifacts/checkpoints"
 )
 DEFAULT_SAM3_ADAPTER_WEIGHT_ROOT = WORKSPACE_ROOT / (
-    "sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42/"
+    "model_projects/sam3_adapter/runs/2026-08-28_sam3-adapter-512_seed42/"
     "5fold/sam3_adapter/fold0/artifacts/checkpoints"
 )
 DEFAULT_DA_SAM3_WEIGHT_ROOT = WORKSPACE_ROOT / (
-    "dual_adapter_sam3/runs/"
+    "model_projects/dual_adapter_sam3/runs/"
     "2026-09-04_visual-da-sam3-full-decoder-joint-512_seed42/"
     "5fold/visual_da_sam3/fold0/artifacts/checkpoints"
 )
 DEFAULT_RESUNET50_WEIGHT_ROOT = WORKSPACE_ROOT / (
-    "unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_"
+    "model_projects/unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_"
     "resunet50_seed42/5fold/foreground/fold0/artifacts/checkpoints"
 )
 DEFAULT_CONVNEXT_UNET_WEIGHT_ROOT = WORKSPACE_ROOT / (
-    "unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_"
+    "model_projects/unet/runs/2026-08-22_merged-crack_0820-splits_bg1-fg2_"
     "convnext-large_seed42/5fold/foreground/fold0/artifacts/checkpoints"
 )
 

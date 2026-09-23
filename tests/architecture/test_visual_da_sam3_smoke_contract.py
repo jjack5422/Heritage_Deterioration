@@ -6,8 +6,8 @@ from pathlib import Path
 import torch
 from torch import nn
 
-import scripts.evaluation.smoke_visual_da_sam3 as smoke
-from dual_adapter_sam3.model import DualAdapterSam3Output
+import model_projects.dual_adapter_sam3.scripts.evaluation.smoke_visual_da_sam3 as smoke
+from model_projects.dual_adapter_sam3.model import DualAdapterSam3Output
 
 
 class _FakeSmokeModel(nn.Module):

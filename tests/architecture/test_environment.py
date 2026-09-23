@@ -6,15 +6,15 @@ from pathlib import Path
 WORKSPACE = Path(__file__).resolve().parents[2]
 ACTIVE_ENVIRONMENT_REFERENCES = (
     WORKSPACE / "AGENTS.md",
-    WORKSPACE / "unet" / "README.md",
-    WORKSPACE / "unet" / "src" / "threshold_preview.py",
-    WORKSPACE / "unet" / "reporting" / "backfill.py",
-    WORKSPACE / "segformer" / "README.md",
-    WORKSPACE / "segformer" / "src" / "train.py",
-    WORKSPACE / "_lib" / "crackseg_common" / "reporting" / "outputs.py",
-    WORKSPACE / "sam2_sac" / "README.md",
-    WORKSPACE / "sam2_sac" / "train_h0.py",
-    WORKSPACE / "sam2_adapter" / "README.md",
+    WORKSPACE / "model_projects" / "unet" / "README.md",
+    WORKSPACE / "model_projects" / "unet" / "src" / "threshold_preview.py",
+    WORKSPACE / "model_projects" / "unet" / "reporting" / "backfill.py",
+    WORKSPACE / "model_projects" / "segformer" / "README.md",
+    WORKSPACE / "model_projects" / "segformer" / "src" / "train.py",
+    WORKSPACE / "model_projects" / "_shared" / "crackseg_common" / "reporting" / "outputs.py",
+    WORKSPACE / "model_projects" / "sam2_sac" / "README.md",
+    WORKSPACE / "model_projects" / "sam2_sac" / "train_h0.py",
+    WORKSPACE / "model_projects" / "sam2_adapter" / "README.md",
 )
 
 

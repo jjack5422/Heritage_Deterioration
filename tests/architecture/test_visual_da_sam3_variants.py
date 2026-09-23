@@ -5,9 +5,9 @@ import pytest
 import torch
 from torch import nn
 
-import dual_adapter_sam3.model as model_module
-from dual_adapter_sam3.concepts import load_concept_registry
-from dual_adapter_sam3.model import (
+import model_projects.dual_adapter_sam3.model as model_module
+from model_projects.dual_adapter_sam3.concepts import load_concept_registry
+from model_projects.dual_adapter_sam3.model import (
     SUPPORTED_MODEL_VARIANTS,
     DualAdapterSam3,
     VisualDualAdapterSam3,
@@ -109,7 +109,7 @@ class _FakeSam3(nn.Module):
 
 @pytest.fixture
 def registry():
-    return load_concept_registry("dual_adapter_sam3/configs/concepts.yaml")
+    return load_concept_registry("model_projects/dual_adapter_sam3/configs/concepts.yaml")
 
 
 @pytest.fixture
