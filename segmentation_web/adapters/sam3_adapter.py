@@ -1,4 +1,4 @@
-"""Web adapter for the trained 512-input SAM3 Adapter model."""
+"""Web adapter for the trained 1008-input SAM3 deterioration experts."""
 
 from __future__ import annotations
 
@@ -9,8 +9,7 @@ import torch
 from adapters.base import TiledTorchAdapter
 from adapters.checkpoint_loading import (
     CheckpointContractError,
-    load_checkpoint_payload,
-    validate_sam3_checkpoint,
+    load_expert_checkpoint,
     verify_base_checkpoint,
 )
 from adapters.sam3_runtime import activate_vendor_runtime
@@ -25,6 +24,7 @@ class SAM3Adapter(TiledTorchAdapter):
         *,
         settings: Settings | None = None,
         device: str | torch.device | None = None,
+        expert: str = "shrinkage_craquelure",
     ) -> None:
         app_settings = settings or default_settings
         super().__init__(
@@ -34,7 +34,7 @@ class SAM3Adapter(TiledTorchAdapter):
             batch_size=app_settings.inference_batch_size,
         )
         self.base_checkpoint = app_settings.sam3_base_checkpoint
-        self.input_size = app_settings.sam3_input_size
+        self.expert = expert
 
     def prepare_runtime(self) -> None:
         activate_vendor_runtime()
@@ -44,12 +44,15 @@ class SAM3Adapter(TiledTorchAdapter):
             raise CheckpointContractError("SAM3 Adapter requires a task checkpoint")
         if self.base_checkpoint is None:
             raise CheckpointContractError("SAM3 base checkpoint is not configured")
-        if self.input_size != 512 or self.tile_size != 512:
+        if self.tile_size != 512:
             raise CheckpointContractError(
-                "The selected SAM3 Adapter checkpoint requires 512-pixel input"
+                "SAM3 experts require 512-pixel source tiles"
             )
         self._require_runtime_device()
-        checkpoint = validate_sam3_checkpoint(load_checkpoint_payload(weight_path))
+        expert_checkpoint = load_expert_checkpoint(
+            weight_path, expected_expert=self.expert, architecture="sam3_adapter"
+        )
+        checkpoint = expert_checkpoint.adaptation
         verify_base_checkpoint(
             self.base_checkpoint,
             checkpoint.base_checkpoint_sha256,
@@ -61,14 +64,16 @@ class SAM3Adapter(TiledTorchAdapter):
         model = Sam3AdapterModel(
             self.base_checkpoint,
             device=self.device,
-            input_size=self.input_size,
+            input_size=expert_checkpoint.input_size,
         )
         load_trainable_state_dict(model, checkpoint.adaptation_state)
         model.eval()
         self.model = model
         self.load_metadata = {
-            "architecture": "SAM3 Adapter 512",
+            "architecture": "SAM3 Adapter 1008",
             "checkpoint": weight_path.name,
+            "expert": self.expert,
+            "model_input_size": expert_checkpoint.input_size,
         }
 
     def _predict_batch(self, batch: torch.Tensor) -> torch.Tensor:

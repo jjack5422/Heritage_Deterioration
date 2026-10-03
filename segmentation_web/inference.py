@@ -7,6 +7,7 @@ import logging
 import threading
 import time
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 from typing import Any
 
@@ -24,7 +25,12 @@ from adapters import (
 )
 from config import Settings, settings
 from imaging.image_processing import binary_mask_to_pil
-from registry import get_adapter_name, get_weight_path
+from registry import (
+    MODELS,
+    get_adapter_name,
+    get_weight_path,
+    resolve_deterioration_class,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -65,10 +71,18 @@ class InferenceManager:
         self._weight_roots = (
             None if model_root is not None else app_settings.model_weight_roots()
         )
+        expert_adapters = {"sam2_adapter": SAM2Adapter, "sam3_adapter": SAM3Adapter}
         self._adapter_factories = adapter_factories or {
             "dummy": DummyAdapter,
-            "sam2_adapter": lambda: SAM2Adapter(settings=app_settings),
-            "sam3_adapter": lambda: SAM3Adapter(settings=app_settings),
+            **{
+                model_id: partial(
+                    expert_adapters[definition["adapter"]],
+                    settings=app_settings,
+                    expert=definition["expert"],
+                )
+                for model_id, definition in MODELS.items()
+                if "expert" in definition
+            },
             "da_sam3": lambda: DASAM3Adapter(settings=app_settings),
             "resunet50": lambda: ResUNetAdapter(settings=app_settings),
             "convnext_unet": lambda: ConvNextUnetAdapter(settings=app_settings),
@@ -149,6 +163,13 @@ class InferenceManager:
 
         if not 0.0 <= threshold <= 1.0:
             raise ValueError("Threshold must be between 0.0 and 1.0")
+        if model_id in MODELS:
+            deterioration_class = resolve_deterioration_class(
+                model_id, deterioration_class
+            )
+        adapter_class = deterioration_class
+        if model_id in MODELS and get_adapter_name(model_id) != "da_sam3":
+            adapter_class = None
 
         with self._inference_lock:
             started = time.perf_counter()
@@ -161,13 +182,13 @@ class InferenceManager:
             )
             adapter = self._load_adapter(model_id, weight_name)
             with torch.inference_mode():
-                if deterioration_class is None:
+                if adapter_class is None:
                     prediction = adapter.predict(image.convert("RGB"), threshold)
                 else:
                     prediction = adapter.predict(
                         image.convert("RGB"),
                         threshold,
-                        deterioration_class=deterioration_class,
+                        deterioration_class=adapter_class,
                     )
             latency_ms = (time.perf_counter() - started) * 1000
             mask = binary_mask_to_pil(prediction["mask"])
@@ -188,7 +209,10 @@ class InferenceManager:
                 "weight": weight_name,
                 "deterioration_class": deterioration_class,
                 "device": device,
-                "metadata": prediction.get("metadata", {}),
+                "metadata": {
+                    **prediction.get("metadata", {}),
+                    "deterioration_class": deterioration_class,
+                },
             }
 
     def unload(self) -> None:

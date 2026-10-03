@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import io
 import logging
+from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
@@ -20,8 +21,11 @@ from config import (
 from imaging.image_processing import (
     base64_png_to_pil,
     configure_image_decompression_limit,
+    ImageTooLargeError,
+    InvalidImageError,
+    validate_image,
 )
-from registry import get_deterioration_classes
+from registry import DETERIORATION_CLASSES, get_deterioration_classes
 
 
 LOGGER = logging.getLogger(__name__)
@@ -29,8 +33,6 @@ LOGGER = logging.getLogger(__name__)
 
 MODEL_LABELS_ZH = {
     "dummy": "測試分割模型（Dummy）",
-    "sam2_adapter": "SAM2 Adapter 分割模型",
-    "sam3_adapter": "SAM3 Adapter 分割模型",
     "da_sam3": "DA-SAM3",
     "resunet50": "ResUNet50 分割模型",
     "convnext_unet": "ConvNeXt-Large U-Net 分割模型",
@@ -42,8 +44,35 @@ DA_SAM3_CLASS_CHOICES = tuple(
     for item in get_deterioration_classes(DA_SAM3_MODEL_ID)
 )
 DETERIORATION_CLASS_LABELS = {
-    class_id: label for label, class_id in DA_SAM3_CLASS_CHOICES
+    item["id"]: item["label"] for item in DETERIORATION_CLASSES
 }
+CLASS_CHOICES = tuple((item["label"], item["id"]) for item in DETERIORATION_CLASSES)
+TEST_CLASS = "test"
+
+
+def model_choices_for_class(
+    models: list[dict[str, Any]], class_id: str | None
+) -> list[tuple[str, str]]:
+    """Filter server-discovered models by their actual output classes."""
+
+    return [
+        (MODEL_LABELS_ZH.get(model["id"], model["label"]), model["id"])
+        for model in models
+        if (
+            (model["id"] == "dummy" and class_id == TEST_CLASS)
+            or any(
+                item["id"] == class_id
+                for item in model.get("deterioration_classes", [])
+            )
+        )
+    ]
+
+
+def available_class_choices(models: list[dict[str, Any]]) -> list[tuple[str, str]]:
+    choices = [item for item in CLASS_CHOICES if model_choices_for_class(models, item[1])]
+    if any(model["id"] == "dummy" for model in models):
+        choices.append(("測試（Dummy）", TEST_CLASS))
+    return choices
 
 API_ERROR_MESSAGES_ZH = {
     "Upload too large": "上傳圖片超過大小限制",
@@ -61,7 +90,7 @@ API_ERROR_MESSAGES_ZH = {
     "Inference failed": "推論失敗，請稍後再試",
     "Unauthorized": "推論服務驗證失敗，請重新啟動私人展示服務",
     "Rate limit exceeded": "推論次數已達上限，請稍後再試",
-    "Image dimensions too large": "圖片尺寸過大，最大為 2048×2048",
+    "Image dimensions too large": "圖片解析度超過服務限制，請縮小圖片後重試",
 }
 
 
@@ -503,7 +532,7 @@ class InferenceApiClient:
         self,
         base_url: str,
         *,
-        timeout_seconds: float = 120.0,
+        timeout_seconds: float = 600.0,
         api_key: str | None = None,
         session: requests.Session | None = None,
     ) -> None:
@@ -544,7 +573,7 @@ class InferenceApiClient:
             raise ApiClientError("Flask API 回傳的服務狀態格式無效")
         return payload
 
-    def get_models(self) -> list[dict[str, str]]:
+    def get_models(self) -> list[dict[str, Any]]:
         try:
             response = self.session.get(
                 f"{self.base_url}/api/models",
@@ -577,7 +606,7 @@ class InferenceApiClient:
 
     def infer(
         self,
-        image: Image.Image,
+        image: Image.Image | str | Path,
         model_id: str,
         weight_name: str,
         threshold: float,
@@ -594,8 +623,13 @@ class InferenceApiClient:
         }:
             raise ApiClientError("請選擇劣化類別")
 
-        buffer = io.BytesIO()
-        image.convert("RGB").save(buffer, format="PNG")
+        if isinstance(image, (str, Path)):
+            image_path = Path(image)
+            image_file = (image_path.name, image_path.read_bytes(), "application/octet-stream")
+        else:
+            buffer = io.BytesIO()
+            image.convert("RGB").save(buffer, format="PNG")
+            image_file = ("upload.png", buffer.getvalue(), "image/png")
         form_data = {
             "model": model_id,
             "weight": weight_name,
@@ -606,7 +640,7 @@ class InferenceApiClient:
         try:
             response = self.session.post(
                 f"{self.base_url}/api/infer",
-                files={"image": ("upload.png", buffer.getvalue(), "image/png")},
+                files={"image": image_file},
                 data=form_data,
                 timeout=self.timeout_seconds,
                 headers=self._headers(),
@@ -662,51 +696,51 @@ def create_ui(
     def load_models():
         try:
             models = client.get_models()
-            choices = [
-                (MODEL_LABELS_ZH.get(model["id"], model["label"]), model["id"])
-                for model in models
-            ]
+            categories = available_class_choices(models)
+            selected_class = categories[0][1] if categories else None
+            choices = model_choices_for_class(models, selected_class)
             selected = choices[0][1] if choices else None
             weights = client.get_weights(selected) if selected else []
             selected_weight = weights[0] if weights else None
-            class_enabled = selected == DA_SAM3_MODEL_ID
             try:
                 health = client.get_health()
             except ApiClientError:
                 health = None
             return (
+                gr.Dropdown(choices=categories, value=selected_class),
                 gr.Dropdown(choices=choices, value=selected),
                 gr.Dropdown(choices=weights, value=selected_weight),
-                gr.Dropdown(
-                    choices=DA_SAM3_CLASS_CHOICES,
-                    value=(DA_SAM3_CLASS_CHOICES[0][1] if class_enabled else None),
-                    visible=class_enabled,
-                    interactive=class_enabled,
-                ),
+                models,
                 format_service_status(health),
             )
         except (ApiClientError, KeyError) as exc:
             raise gr.Error(str(exc)) from exc
 
-    def load_model_settings(model_id: str):
+    def load_class_models(class_id: str, models: list[dict[str, Any]]):
+        choices = model_choices_for_class(models, class_id)
+        selected = choices[0][1] if choices else None
+        return (
+            gr.Dropdown(choices=choices, value=selected),
+            load_model_settings(selected, class_id, models),
+        )
+
+    def load_model_settings(
+        model_id: str | None, class_id: str, models: list[dict[str, Any]]
+    ):
+        choices = model_choices_for_class(models, class_id)
+        if model_id not in {item[1] for item in choices}:
+            return gr.Dropdown(choices=[], value=None)
         try:
             weights = client.get_weights(model_id)
-            class_enabled = model_id == DA_SAM3_MODEL_ID
-            class_dropdown = gr.Dropdown(
-                choices=DA_SAM3_CLASS_CHOICES,
-                value=(DA_SAM3_CLASS_CHOICES[0][1] if class_enabled else None),
-                visible=class_enabled,
-                interactive=class_enabled,
-            )
             if not weights:
                 gr.Warning("找不到相容的模型權重")
-                return gr.Dropdown(choices=[], value=None), class_dropdown
-            return gr.Dropdown(choices=weights, value=weights[0]), class_dropdown
+                return gr.Dropdown(choices=[], value=None)
+            return gr.Dropdown(choices=weights, value=weights[0])
         except ApiClientError as exc:
             raise gr.Error(str(exc)) from exc
 
     def run_inference(
-        image: Image.Image | None,
+        image: str | None,
         model_id: str | None,
         weight_name: str | None,
         deterioration_class: str | None,
@@ -715,16 +749,26 @@ def create_ui(
         try:
             if image is None:
                 raise ApiClientError("請先上傳圖片")
+            with Path(image).open("rb") as source:
+                original = validate_image(
+                    source,
+                    max_pixels=app_settings.max_image_pixels,
+                    max_side=app_settings.max_image_side,
+                )
             result = client.infer(
                 image,
                 model_id or "",
                 weight_name or "",
                 threshold,
-                deterioration_class,
+                None if deterioration_class == TEST_CLASS else deterioration_class,
             )
-            return image.convert("RGB"), result["mask"], result["overlay"], result[
+            return original, result["mask"], result["overlay"], result[
                 "metadata"
             ]
+        except ImageTooLargeError as exc:
+            raise gr.Error(API_ERROR_MESSAGES_ZH["Image dimensions too large"]) from exc
+        except (InvalidImageError, OSError) as exc:
+            raise gr.Error(API_ERROR_MESSAGES_ZH["Invalid image"]) from exc
         except ApiClientError as exc:
             raise gr.Error(str(exc)) from exc
 
@@ -770,38 +814,37 @@ def create_ui(
                     """
                 )
                 input_image = gr.Image(
-                    type="pil",
+                    type="filepath",
                     sources=["upload"],
                     label="輸入影像",
                     height=290,
                     placeholder="拖曳或點選上傳 PNG、JPEG 圖片",
                     elem_classes=["source-stage"],
                 )
+                deterioration_dropdown = gr.Dropdown(
+                    choices=CLASS_CHOICES,
+                    value=None,
+                    label="劣化類別",
+                    info="先選類別，再選擇對應模型與權重；裂縫／龜裂為 DA-SAM3 合併輸出",
+                    allow_custom_value=False,
+                    elem_id="deterioration-dropdown",
+                    elem_classes=["lab-dropdown"],
+                )
                 with gr.Row(elem_classes=["field-pair"]):
                     model_dropdown = gr.Dropdown(
                         choices=[],
                         label="模型",
-                        allow_custom_value=True,
+                        allow_custom_value=False,
                         elem_id="model-dropdown",
                         elem_classes=["lab-dropdown"],
                     )
                     weight_dropdown = gr.Dropdown(
                         choices=[],
                         label="模型權重",
-                        allow_custom_value=True,
+                        allow_custom_value=False,
                         elem_id="weight-dropdown",
                         elem_classes=["lab-dropdown"],
                     )
-                deterioration_dropdown = gr.Dropdown(
-                    choices=DA_SAM3_CLASS_CHOICES,
-                    value=None,
-                    label="劣化類別",
-                    info="DA-SAM3 可分別輸出裂縫／龜裂或缺失遮罩",
-                    visible=False,
-                    interactive=False,
-                    elem_id="deterioration-dropdown",
-                    elem_classes=["lab-dropdown"],
-                )
                 threshold_slider = gr.Slider(
                     minimum=0.0,
                     maximum=1.0,
@@ -863,21 +906,31 @@ def create_ui(
                     elem_classes=["telemetry-panel"],
                 )
 
+        models_state = gr.State([])
         demo.load(
             fn=load_models,
             outputs=[
+                deterioration_dropdown,
                 model_dropdown,
                 weight_dropdown,
-                deterioration_dropdown,
+                models_state,
                 service_status,
             ],
             queue=False,
             api_visibility="private",
         )
-        model_dropdown.change(
+        deterioration_dropdown.input(
+            fn=load_class_models,
+            inputs=[deterioration_dropdown, models_state],
+            outputs=[model_dropdown, weight_dropdown],
+            queue=False,
+            show_progress="minimal",
+            api_visibility="private",
+        )
+        model_dropdown.input(
             fn=load_model_settings,
-            inputs=model_dropdown,
-            outputs=[weight_dropdown, deterioration_dropdown],
+            inputs=[model_dropdown, deterioration_dropdown, models_state],
+            outputs=weight_dropdown,
             queue=False,
             show_progress="minimal",
             api_visibility="private",

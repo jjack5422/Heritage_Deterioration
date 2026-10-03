@@ -14,6 +14,17 @@ DA_SAM3_CLASSES = (
     {"id": "crack_craquelure", "label": "裂縫／龜裂"},
     {"id": "loss", "label": "缺失"},
 )
+DETERIORATION_CLASSES = (
+    {"id": "craquelure", "label": "龜裂（craquelure）"},
+    {"id": "loss", "label": "缺失（loss）"},
+    {"id": "crack", "label": "裂縫（crack）"},
+    DA_SAM3_CLASSES[0],
+)
+EXPERT_CLASSES = {
+    "craquelure": "shrinkage_craquelure",
+    "loss": "loss",
+    "crack": "scratch_crack",
+}
 
 MODELS: dict[str, dict[str, Any]] = {
     "dummy": {
@@ -21,15 +32,19 @@ MODELS: dict[str, dict[str, Any]] = {
         "weights_subdir": None,
         "adapter": "dummy",
     },
-    "sam2_adapter": {
-        "label": "SAM2 Adapter",
-        "weights_subdir": "sam2_adapter",
-        "adapter": "sam2_adapter",
-    },
-    "sam3_adapter": {
-        "label": "SAM3 Adapter",
-        "weights_subdir": "sam3_adapter",
-        "adapter": "sam3_adapter",
+    **{
+        f"{architecture}_{category['id']}": {
+            "label": f"{label} {category['id']}",
+            "weights_subdir": f"{architecture}_{category['id']}",
+            "adapter": architecture,
+            "expert": EXPERT_CLASSES[category["id"]],
+            "preferred_weight": "best.pt",
+            "deterioration_classes": (category,),
+        }
+        for architecture, label in (
+            ("sam3_adapter", "SAM3 Adapter"), ("sam2_adapter", "SAM2 Adapter")
+        )
+        for category in DETERIORATION_CLASSES[:3]
     },
     "da_sam3": {
         "label": "DA-SAM3",
@@ -42,11 +57,13 @@ MODELS: dict[str, dict[str, Any]] = {
         "label": "ResUNet50",
         "weights_subdir": "resunet50",
         "adapter": "resunet50",
+        "deterioration_classes": (DETERIORATION_CLASSES[0],),
     },
     "convnext_unet": {
         "label": "ConvNeXt-Large U-Net",
         "weights_subdir": "convnext_unet",
         "adapter": "convnext_unet",
+        "deterioration_classes": (DETERIORATION_CLASSES[0],),
     },
 }
 
@@ -120,6 +137,8 @@ def resolve_deterioration_class(
             )
         return None
     if not deterioration_class:
+        if len(classes) == 1:
+            return classes[0]["id"]
         raise RegistryError("Deterioration class is required for DA-SAM3")
     allowed = {item["id"] for item in classes}
     if deterioration_class not in allowed:

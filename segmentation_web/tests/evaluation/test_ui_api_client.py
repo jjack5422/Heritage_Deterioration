@@ -174,6 +174,105 @@ def test_api_client_sends_da_sam3_class_and_displays_its_chinese_label() -> None
     assert "劣化類別：裂縫／龜裂" in result["metadata"]
 
 
+def test_category_choices_keep_combined_da_output_separate_from_experts() -> None:
+    from registry import get_models
+    from ui import available_class_choices, model_choices_for_class
+
+    models = get_models()
+    assert {item[1] for item in model_choices_for_class(models, "craquelure")} == {
+        "sam3_adapter_craquelure", "sam2_adapter_craquelure", "resunet50", "convnext_unet"
+    }
+    assert {item[1] for item in model_choices_for_class(models, "loss")} == {
+        "sam3_adapter_loss", "sam2_adapter_loss", "da_sam3"
+    }
+    assert {item[1] for item in model_choices_for_class(models, "crack")} == {
+        "sam3_adapter_crack", "sam2_adapter_crack"
+    }
+    assert model_choices_for_class(models, "crack_craquelure") == [("DA-SAM3", "da_sam3")]
+    assert available_class_choices([models[0]]) == [("測試（Dummy）", "test")]
+
+
+def test_api_client_forwards_original_jpeg_bytes_without_png_expansion(tmp_path) -> None:
+    path = tmp_path / "phone_photo.jpg"
+    Image.new("RGB", (80, 60), "navy").save(path, format="JPEG")
+    session = FakeSession([FakeResponse({
+        "status": "success", "model": "dummy", "weight": "built-in",
+        "threshold": 0.5, "device": "cpu", "latency_ms": 1,
+        "mask_png_base64": _png_base64("black"),
+        "overlay_png_base64": _png_base64("navy"),
+    })])
+    client = InferenceApiClient("http://127.0.0.1:5000", session=session)
+    client.infer(path, "dummy", "built-in", 0.5)
+    forwarded = session.calls[0][2]["files"]["image"]
+    assert forwarded[0] == path.name
+    assert forwarded[1] == path.read_bytes()
+    assert forwarded[1].startswith(b"\xff\xd8")
+
+
+def test_ui_preprocess_and_handler_accept_large_photo_and_preserve_dimensions(tmp_path) -> None:
+    from gradio.data_classes import ImageData
+    from config import load_settings
+    from dataclasses import replace
+
+    path = tmp_path / "large_photo.jpg"
+    Image.new("RGB", (5472, 3648), "navy").save(path, format="JPEG")
+
+    class RecordingClient:
+        def infer(self, image, model, weight, threshold, category):
+            assert image == str(path)
+            assert category is None
+            return {
+                "mask": Image.new("L", (5472, 3648)),
+                "overlay": Image.new("RGB", (5472, 3648)),
+                "metadata": "large photo success",
+            }
+
+    demo = create_ui(
+        settings=replace(load_settings(), max_image_side=8192, max_image_pixels=8192**2),
+        api_client=RecordingClient(),
+    )
+    handler = next(fn for fn in demo.fns.values() if fn.fn.__name__ == "run_inference")
+    image = handler.inputs[0].preprocess(ImageData(path=str(path), orig_name=path.name))
+    assert image == str(path)
+    result = handler.fn(image, "dummy", "built-in", "test", 0.5)
+    assert [item.size for item in result[:3]] == [(5472, 3648)] * 3
+
+
+def test_ui_category_change_resets_model_and_weight_and_model_change_keeps_class() -> None:
+    from registry import get_models
+
+    class DiscoveryClient:
+        def get_models(self):
+            return get_models()
+
+        def get_weights(self, model_id):
+            return ["best.pt", "last.pt"] if model_id else []
+
+        def get_health(self):
+            return {"status": "ok", "device": "cpu"}
+
+    demo = create_ui(api_client=DiscoveryClient())
+    functions = {fn.fn.__name__: fn.fn for fn in demo.fns.values()}
+    initial = functions["load_models"]()
+    assert initial[0].value == "craquelure"
+    assert initial[1].value == "sam3_adapter_craquelure"
+    assert initial[2].value == "best.pt"
+    changed = functions["load_class_models"]("loss", initial[3])
+    assert changed[0].value == "sam3_adapter_loss"
+    assert changed[1].value == "best.pt"
+    weight = functions["load_model_settings"]("da_sam3", "loss", initial[3])
+    assert weight.value == "best.pt"
+    invalid = functions["load_model_settings"]("sam3_adapter_crack", "loss", initial[3])
+    assert invalid.value is None
+    assert invalid.choices == []
+    config = demo.get_config_file()
+    dropdowns = [item["props"] for item in config["components"] if item["type"] == "dropdown"]
+    assert [item["elem_id"] for item in dropdowns] == [
+        "deterioration-dropdown", "model-dropdown", "weight-dropdown"
+    ]
+    assert all(item["allow_custom_value"] is False for item in dropdowns)
+
+
 def test_gradio_blocks_build_without_contacting_flask() -> None:
     session = FakeSession([])
     client = InferenceApiClient("http://127.0.0.1:5000", session=session)

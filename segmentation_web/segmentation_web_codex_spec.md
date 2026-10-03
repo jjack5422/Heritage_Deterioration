@@ -1,3 +1,5 @@
+> Historical initial specification. Current expert IDs, checkpoint layout, and category-first UI are documented in `README.md`.
+
 # Segmentation Inference Web — Codex CLI Implementation Spec
 
 > Historical MVP scaffold specification. Its placeholder requirements have
