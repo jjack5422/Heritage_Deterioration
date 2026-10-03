@@ -1,20 +1,34 @@
 # Segmentation Inference Web
 
 A small, maintainable segmentation inference service for an NVIDIA GPU server.
-It serves five trained deterioration-segmentation architectures plus a CPU-only dummy
+It serves six SAM2/SAM3 expert checkpoints, DA-SAM3, ResUNet50, ConvNeXt-Large, and a CPU-only dummy
 model through one Flask API and Gradio interface.
 
 ## Available models
 
 - Dummy Segmentation is fully operational without a checkpoint or GPU.
-- SAM2 Adapter, SAM3 Adapter, DA-SAM3, ResUNet50, and ConvNeXt-Large U-Net load
-  their real Fold 0 task checkpoints on the RTX 5090.
-- DA-SAM3 defaults to the full-PixelDecoder `visual_da_sam3`
-  `stage2_best.pt` checkpoint and lets the user select either `裂縫／龜裂` or
-  `缺失` without reloading the model.
+- Select the deterioration class first; the UI then lists only models that output that class.
+
+  | Class | Models |
+  | --- | --- |
+  | 龜裂 (craquelure) | SAM3 Adapter craquelure, SAM2 Adapter craquelure, ResUNet50, ConvNeXt-Large U-Net |
+  | 缺失 (loss) | SAM3 Adapter loss, SAM2 Adapter loss, DA-SAM3 |
+  | 裂縫 (crack) | SAM3 Adapter crack, SAM2 Adapter crack |
+  | 裂縫／龜裂 (combined) | DA-SAM3 |
+  | 測試 (Dummy) | Dummy Segmentation |
+
+- Class changes reset both the selected model and its weights. Expert weights default to
+  `best.pt`; `last.pt` remains selectable. All real models load on the RTX 5090.
+- DA-SAM3 retains its full-PixelDecoder `visual_da_sam3` `stage2_best.pt` checkpoint.
+  Its combined crack/craquelure output is kept separate from the two individual expert classes.
 - Arbitrary-size images use shared 512×512 sliding windows, Gaussian overlap
   blending, and original-size mask reconstruction.
-- Uploaded images are processed in memory and are not permanently stored.
+- Gradio forwards the original uploaded JPEG/PNG/WEBP bytes to Flask. It does not
+  re-encode JPEG as PNG, which could push a valid upload above the 20 MB file limit.
+  Phone EXIF orientation is applied consistently to the original image and inference.
+- Large images retain their resolution and use tiled inference; API requests allow
+  up to 600 seconds. Images remain in Gradio's temporary cache during the session;
+  Flask does not permanently store them.
 - Model checkpoints are selected from server-side directories only; browser
   users cannot upload weights or choose arbitrary filesystem paths.
 
@@ -126,8 +140,12 @@ cp .env.example .env
 MODEL_ROOT=/data/models
 SAM2_BASE_CHECKPOINT=segment-anything-2/checkpoints/sam2.1_hiera_large.pt
 SAM3_BASE_CHECKPOINT=segment-anything-3/checkpoints/sam3.pt
-SAM2_ADAPTER_WEIGHT_ROOT=sam2_adapter/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
-SAM3_ADAPTER_WEIGHT_ROOT=sam3_adapter/runs/<experiment>/5fold/sam3_adapter/fold0/artifacts/checkpoints
+SAM3_ADAPTER_CRAQUELURE_WEIGHT_ROOT=sam3_adapter/runs/2026-09-17_craquelure-sam3-adapter-1008_no-kyt-2lb1_epochs60_seed42/1fold/shrinkage_craquelure/fold0/artifacts/checkpoints
+SAM3_ADAPTER_LOSS_WEIGHT_ROOT=sam3_adapter/runs/2026-09-16_three-experts_sam3-adapter-1008_jacky-dataset115_seed42/1fold/loss/fold0/artifacts/checkpoints
+SAM3_ADAPTER_CRACK_WEIGHT_ROOT=sam3_adapter/runs/2026-09-16_three-experts_sam3-adapter-1008_jacky-dataset115_seed42/1fold/scratch_crack/fold0/artifacts/checkpoints
+SAM2_ADAPTER_CRAQUELURE_WEIGHT_ROOT=sam2_adapter/runs/2026-09-20_three-experts_sam2-adapter-1008_50ep_locked-splits_seed42/1fold/shrinkage_craquelure/fold0/artifacts/checkpoints
+SAM2_ADAPTER_LOSS_WEIGHT_ROOT=sam2_adapter/runs/2026-09-20_three-experts_sam2-adapter-1008_50ep_locked-splits_seed42/1fold/loss/fold0/artifacts/checkpoints
+SAM2_ADAPTER_CRACK_WEIGHT_ROOT=sam2_adapter/runs/2026-09-20_three-experts_sam2-adapter-1008_50ep_locked-splits_seed42/1fold/scratch_crack/fold0/artifacts/checkpoints
 DA_SAM3_WEIGHT_ROOT=dual_adapter_sam3/runs/<experiment>/5fold/visual_da_sam3/fold0/artifacts/checkpoints
 RESUNET50_WEIGHT_ROOT=unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
 CONVNEXT_UNET_WEIGHT_ROOT=unet/runs/<experiment>/5fold/foreground/fold0/artifacts/checkpoints
@@ -139,10 +157,10 @@ FLASK_PORT=5000
 GRADIO_HOST=127.0.0.1
 GRADIO_PORT=7860
 FLASK_API_URL=http://127.0.0.1:5000
-MAX_UPLOAD_MB=10
-REQUEST_TIMEOUT_SECONDS=120
-MAX_IMAGE_PIXELS=4194304
-MAX_IMAGE_SIDE=2048
+MAX_UPLOAD_MB=20
+REQUEST_TIMEOUT_SECONDS=600
+MAX_IMAGE_PIXELS=67108864
+MAX_IMAGE_SIDE=8192
 INFERENCE_RATE_LIMIT_REQUESTS=30
 INFERENCE_RATE_LIMIT_WINDOW_SECONDS=600
 GRADIO_QUEUE_MAX_SIZE=2
@@ -176,8 +194,23 @@ missing, short, or placeholder internal API key.
 The repository-relative defaults point to these completed binary foreground
 runs:
 
-- SAM2 Adapter: `2026-08-22_merged-crack_0820-splits_bg1-fg2_sam2-adapter-hiera-large_seed42`
-- SAM3 Adapter: `2026-08-28_sam3-adapter-512_seed42`
+- SAM2 Adapter craquelure/loss/crack: `2026-09-20_three-experts_sam2-adapter-1008_50ep_locked-splits_seed42`
+- SAM3 Adapter loss/crack: `2026-09-16_three-experts_sam3-adapter-1008_jacky-dataset115_seed42`
+- SAM3 Adapter craquelure: `2026-09-17_craquelure-sam3-adapter-1008_no-kyt-2lb1_epochs60_seed42`
+
+Expert checkpoints live under `1fold/<expert>/fold0/artifacts/checkpoints/`, where
+`<expert>` is `shrinkage_craquelure`, `loss`, or `scratch_crack`. They require the
+same fold's `config/args.json` and `config/model.json` to validate class, input size,
+adapter settings, and base checkpoint hash. Deployment copies must preserve this
+layout. Changing the configured weight root does not change the expert contract.
+
+SAM3 experts use the training `Sam3AdapterModel` wrapper: 512 source tile → bicubic
+1008 RGB → SAM3 normalization → 512 logits. SAM2 experts reuse `SAM2ExpertModel`:
+512 source tile → bicubic 1008 → normalized reflection padding to 1024 → remove
+padding from logits → bilinear resize to 512. `SAM3_INPUT_SIZE=512` applies only to
+DA-SAM3. The global source tile size remains 512.
+
+Retained models:
 - DA-SAM3: `2026-09-04_visual-da-sam3-full-decoder-joint-512_seed42`, Fold 0
   `stage2_best.pt` (the deployed model variant is `visual_da_sam3`; all
   effective PixelDecoder stages and the semantic head are loaded)
@@ -241,8 +274,8 @@ http://127.0.0.1:7860
 When developing over VS Code Remote SSH, forward remote port `7860` and open
 `http://localhost:7860` on the local computer. The UI loads models and weights
 from Flask, submits the image as multipart form data, and decodes the returned
-Base64 PNG mask and overlay. Selecting DA-SAM3 reveals the required
-`劣化類別` field; the API accepts `deterioration_class=crack_craquelure` or
+Base64 PNG mask and overlay. Select the class first, then a compatible model and
+checkpoint. DA-SAM3 accepts `deterioration_class=crack_craquelure` or
 `deterioration_class=loss` and returns only that class's binary mask.
 
 ## Access from another computer on the same network
@@ -323,7 +356,7 @@ not the visitor password. Stop ngrok immediately after the meeting.
   excess requests return HTTP `429` with `Retry-After`.
 - GPU concurrency remains one and the Gradio queue accepts at most two waiting
   requests.
-- Uploads are limited to 10 MB, 2048 pixels per side, and 4,194,304 decoded
+- Uploads are limited to 20 MB, 8192 pixels per side, and 67,108,864 decoded
   pixels. This prevents compressed images from expanding into an unbounded
   number of inference tiles.
 - Gradio event APIs are private and its unauthenticated queue API is disabled.
@@ -348,7 +381,9 @@ Returns service and CUDA information:
 
 ### `GET /api/models`
 
-Lists registered model identifiers and display labels.
+Lists registered model identifiers, display labels, and `deterioration_classes`.
+The old generic `sam2_adapter` and `sam3_adapter` identifiers are replaced by
+`sam{2,3}_adapter_{craquelure,loss,crack}`.
 
 ### `GET /api/models/<model_id>/weights`
 
@@ -356,7 +391,10 @@ Lists compatible server-side checkpoints for the selected model.
 
 ### `POST /api/infer`
 
-Accepts multipart fields `image`, `model`, `weight`, and `threshold`. A successful
+Accepts multipart fields `image`, `model`, `weight`, `threshold`, and
+`deterioration_class` (`craquelure`, `loss`, `crack`, or `crack_craquelure`). Single-class
+models infer their class when omitted; mismatched classes are rejected before loading.
+DA-SAM3 requires an explicit class. Dummy requests omit this field. A successful
 response contains model metadata plus Base64-encoded PNG mask and overlay fields.
 Images must be valid JPEG, PNG, or WEBP files and must fit the configured byte,
 side-length, and decoded-pixel limits.
@@ -367,7 +405,7 @@ Place the checkpoint directly inside its configured model-specific weight root,
 for example:
 
 ```text
-<SAM2_ADAPTER_WEIGHT_ROOT>/new_best.pt
+<SAM2_ADAPTER_CRACK_WEIGHT_ROOT>/new_best.pt
 ```
 
 No source edit is needed. Reload or reselect the model in the UI to discover the

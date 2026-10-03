@@ -2,13 +2,67 @@ from __future__ import annotations
 
 import pytest
 import torch
+import json
+from pathlib import Path
 
 from adapters.checkpoint_loading import (
     CheckpointContractError,
     validate_sam2_checkpoint,
     validate_sam3_checkpoint,
     validate_unet_checkpoint,
+    load_expert_checkpoint,
 )
+
+
+def _expert_weight(tmp_path: Path) -> Path:
+    config_root = tmp_path / "config"
+    config_root.mkdir()
+    (config_root / "args.json").write_text(json.dumps({
+        "expert": "loss", "model_input_size": 1008,
+        "sam2_config": "configs/sam2.1/sam2.1_hiera_l.yaml",
+        "scale_factor": 32, "highpass_rate": 0.25,
+    }))
+    (config_root / "model.json").write_text(json.dumps({
+        "expert": "loss", "model_input_size": 1008,
+        "source_and_metric_size": 512, "backbone_input_size": 1024,
+        "base_checkpoint_sha256": "b" * 64,
+        "adapter_metadata": {"scale_factor": 32, "highpass_rate": 0.25},
+    }))
+    checkpoint = tmp_path / "artifacts/checkpoints/best.pt"
+    checkpoint.parent.mkdir(parents=True)
+    torch.save({
+        "schema_version": 1, "expert": "loss", "foreground_raw_ids": (2,),
+        "base_checkpoint_sha256": "b" * 64,
+        "adaptation_state": {"decoder.weight": torch.ones(1)},
+    }, checkpoint)
+    return checkpoint
+
+
+@pytest.mark.parametrize("architecture", ["sam2_adapter", "sam3_adapter"])
+def test_expert_checkpoint_requires_matching_class_and_training_input_contract(tmp_path, architecture):
+    path = _expert_weight(tmp_path)
+    checkpoint = load_expert_checkpoint(path, expected_expert="loss", architecture=architecture)
+    assert checkpoint.input_size == 1008
+    with pytest.raises(CheckpointContractError, match="expert"):
+        load_expert_checkpoint(path, expected_expert="scratch_crack", architecture=architecture)
+    config = tmp_path / "config/args.json"
+    args = json.loads(config.read_text())
+    args["model_input_size"] = 512
+    config.write_text(json.dumps(args))
+    with pytest.raises(CheckpointContractError, match="1008"):
+        load_expert_checkpoint(path, expected_expert="loss", architecture=architecture)
+
+
+def test_expert_checkpoint_rejects_missing_configuration_and_wrong_raw_classes(tmp_path):
+    path = _expert_weight(tmp_path)
+    (tmp_path / "config/args.json").unlink()
+    with pytest.raises(CheckpointContractError, match="config"):
+        load_expert_checkpoint(path, expected_expert="loss", architecture="sam2_adapter")
+    payload = torch.load(path, weights_only=False)
+    payload["foreground_raw_ids"] = (1,)
+    torch.save(payload, path)
+    with pytest.raises(CheckpointContractError, match="foreground classes"):
+        load_expert_checkpoint(path, expected_expert="loss", architecture="sam2_adapter")
 
 
 def test_sam2_checkpoint_contract_accepts_completed_foreground_schema() -> None:

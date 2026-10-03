@@ -110,6 +110,28 @@ def test_dummy_weights_endpoint(tmp_path: Path) -> None:
     assert response.get_json() == ["built-in"]
 
 
+def test_expert_inference_rejects_mismatched_category_before_loading(tmp_path: Path) -> None:
+    manager = _RecordingInferenceManager()
+    app = create_app(settings=_settings(tmp_path), inference_manager=manager)
+    app.config.update(TESTING=True)
+    client = app.test_client()
+    for model_id in ("sam2_adapter_crack", "sam3_adapter_crack", "resunet50"):
+        response = client.post("/api/infer", data={
+            "image": (_png_file(), "input.png"), "model": model_id,
+            "weight": "best.pt", "deterioration_class": "loss",
+        }, content_type="multipart/form-data")
+        assert response.status_code == 400
+        assert response.get_json()["error"] == "Invalid deterioration class"
+    assert manager.calls == []
+    assert client.get("/api/models/sam2_adapter/weights").status_code == 400
+    accepted = client.post("/api/infer", data={
+        "image": (_png_file(), "input.png"), "model": "sam3_adapter_loss",
+        "weight": "best.pt", "deterioration_class": "loss",
+    }, content_type="multipart/form-data")
+    assert accepted.status_code == 200
+    assert accepted.get_json()["deterioration_class"] == "loss"
+
+
 def test_dummy_inference_returns_pngs_and_metadata(tmp_path: Path) -> None:
     response = _client(tmp_path).post(
         "/api/infer",
@@ -301,7 +323,9 @@ def test_inference_rate_limit_rejects_excess_requests(tmp_path: Path) -> None:
     assert int(rejected.headers["Retry-After"]) >= 1
 
 
-def test_decoded_image_dimensions_are_limited(tmp_path: Path) -> None:
+def test_decoded_image_dimensions_are_limited(tmp_path: Path, monkeypatch) -> None:
+    # Restore Pillow's process-wide limit after this deliberately tiny-cap test.
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 64)
     client = _client(tmp_path, max_image_pixels=64, max_image_side=8)
 
     response = client.post(
@@ -317,3 +341,15 @@ def test_decoded_image_dimensions_are_limited(tmp_path: Path) -> None:
 
     assert response.status_code == 413
     assert response.get_json()["error"] == "Image dimensions too large"
+
+
+def test_upload_file_limit_excludes_multipart_overhead_but_rejects_larger_files(tmp_path):
+    client = _client(tmp_path, max_upload_mb=1)
+    png = _png_file().getvalue()
+    exact_limit = png + b"\0" * (1024 * 1024 - len(png))
+    for content, expected_status in ((exact_limit, 200), (exact_limit + b"x", 413)):
+        response = client.post("/api/infer", data={
+            "image": (io.BytesIO(content), "boundary.png"),
+            "model": "dummy", "weight": "built-in", "threshold": "0.5",
+        }, content_type="multipart/form-data")
+        assert response.status_code == expected_status

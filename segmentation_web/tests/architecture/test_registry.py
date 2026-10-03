@@ -14,24 +14,27 @@ from registry import (
 )
 
 
-def test_get_models_lists_dummy_and_five_real_models() -> None:
+def test_get_models_lists_six_experts_and_retains_existing_models() -> None:
     models = get_models()
 
-    assert models == [
-        {"id": "dummy", "label": "Dummy Segmentation"},
-        {"id": "sam2_adapter", "label": "SAM2 Adapter"},
-        {"id": "sam3_adapter", "label": "SAM3 Adapter"},
-        {
-            "id": "da_sam3",
-            "label": "DA-SAM3",
-            "deterioration_classes": [
-                {"id": "crack_craquelure", "label": "裂縫／龜裂"},
-                {"id": "loss", "label": "缺失"},
-            ],
-        },
-        {"id": "resunet50", "label": "ResUNet50"},
-        {"id": "convnext_unet", "label": "ConvNeXt-Large U-Net"},
-    ]
+    ids = {model["id"] for model in models}
+    assert ids == {
+        "dummy", "da_sam3", "resunet50", "convnext_unet",
+        "sam3_adapter_craquelure", "sam3_adapter_loss", "sam3_adapter_crack",
+        "sam2_adapter_craquelure", "sam2_adapter_loss", "sam2_adapter_crack",
+    }
+    assert {item["id"] for item in get_deterioration_classes("resunet50")} == {"craquelure"}
+    assert {item["id"] for item in get_deterioration_classes("convnext_unet")} == {"craquelure"}
+
+
+@pytest.mark.parametrize("architecture", ["sam2", "sam3"])
+@pytest.mark.parametrize("category", ["craquelure", "loss", "crack"])
+def test_experts_infer_their_only_class_and_reject_other_classes(architecture, category):
+    model_id = f"{architecture}_adapter_{category}"
+    assert resolve_deterioration_class(model_id, None) == category
+    assert resolve_deterioration_class(model_id, category) == category
+    with pytest.raises(RegistryError, match="Invalid"):
+        resolve_deterioration_class(model_id, "crack_craquelure")
 
 
 def test_da_sam3_exposes_and_validates_fixed_deterioration_classes() -> None:
@@ -49,13 +52,13 @@ def test_da_sam3_exposes_and_validates_fixed_deterioration_classes() -> None:
 
 
 def test_get_weights_filters_and_sorts_compatible_checkpoints(tmp_path: Path) -> None:
-    model_dir = tmp_path / "sam2_adapter"
+    model_dir = tmp_path / "sam2_adapter_craquelure"
     model_dir.mkdir()
     for name in ("epoch_100.pth", "best.pt", "model.ckpt", "notes.txt"):
         (model_dir / name).write_bytes(b"checkpoint")
     (model_dir / "nested.pth").mkdir()
 
-    assert get_weights("sam2_adapter", model_root=tmp_path) == [
+    assert get_weights("sam2_adapter_craquelure", model_root=tmp_path) == [
         "best.pt",
         "epoch_100.pth",
         "model.ckpt",
@@ -70,13 +73,13 @@ def test_model_specific_weight_root_can_use_completed_run_directory(
     (checkpoint_root / "best.pt").write_bytes(b"checkpoint")
 
     assert get_weights(
-        "sam3_adapter",
-        weight_roots={"sam3_adapter": checkpoint_root},
+        "sam3_adapter_craquelure",
+        weight_roots={"sam3_adapter_craquelure": checkpoint_root},
     ) == ["best.pt"]
     assert get_weight_path(
-        "sam3_adapter",
+        "sam3_adapter_craquelure",
         "best.pt",
-        weight_roots={"sam3_adapter": checkpoint_root},
+        weight_roots={"sam3_adapter_craquelure": checkpoint_root},
     ) == (checkpoint_root / "best.pt").resolve()
 
 
@@ -110,11 +113,11 @@ def test_unknown_model_is_rejected(tmp_path: Path) -> None:
 def test_get_weight_path_blocks_unsafe_or_incompatible_names(
     tmp_path: Path, weight_name: str
 ) -> None:
-    model_dir = tmp_path / "sam2_adapter"
+    model_dir = tmp_path / "sam2_adapter_craquelure"
     model_dir.mkdir()
 
     with pytest.raises(InvalidWeightError):
-        get_weight_path("sam2_adapter", weight_name, model_root=tmp_path)
+        get_weight_path("sam2_adapter_craquelure", weight_name, model_root=tmp_path)
 
 
 def test_get_weight_path_returns_existing_checkpoint(tmp_path: Path) -> None:
@@ -130,12 +133,12 @@ def test_get_weight_path_returns_existing_checkpoint(tmp_path: Path) -> None:
 
 
 def test_checkpoint_symlink_cannot_escape_model_directory(tmp_path: Path) -> None:
-    model_dir = tmp_path / "sam2_adapter"
+    model_dir = tmp_path / "sam2_adapter_craquelure"
     model_dir.mkdir()
     outside = tmp_path / "secret.pth"
     outside.write_bytes(b"secret")
     (model_dir / "linked.pth").symlink_to(outside)
 
-    assert get_weights("sam2_adapter", model_root=tmp_path) == []
+    assert get_weights("sam2_adapter_craquelure", model_root=tmp_path) == []
     with pytest.raises(InvalidWeightError, match="escapes"):
-        get_weight_path("sam2_adapter", "linked.pth", model_root=tmp_path)
+        get_weight_path("sam2_adapter_craquelure", "linked.pth", model_root=tmp_path)

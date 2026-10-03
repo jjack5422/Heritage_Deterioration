@@ -8,7 +8,7 @@ import warnings
 from typing import BinaryIO
 
 import numpy as np
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 
 SUPPORTED_IMAGE_FORMATS = frozenset({"JPEG", "PNG", "WEBP"})
@@ -63,7 +63,7 @@ def validate_image(
                 max_side=max_side,
             )
             source.load()
-            return source.convert("RGB").copy()
+            return ImageOps.exif_transpose(source).convert("RGB").copy()
         except ImageTooLargeError:
             raise
         except (OSError, ValueError) as exc:
@@ -84,7 +84,7 @@ def validate_image(
                 max_side=max_side,
             )
             opened.load()
-            return opened.convert("RGB").copy()
+            return ImageOps.exif_transpose(opened).convert("RGB").copy()
     except InvalidImageError:
         raise
     except (Image.DecompressionBombWarning, Image.DecompressionBombError) as exc:

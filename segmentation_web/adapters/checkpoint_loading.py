@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import string
 from dataclasses import dataclass
 from pathlib import Path
@@ -32,6 +33,65 @@ class UnetCheckpoint:
     backbone: str
     encoder: str
     class_names: tuple[str, ...]
+
+
+@dataclass(frozen=True, slots=True)
+class ExpertCheckpoint:
+    adaptation: AdaptationCheckpoint
+    args: dict[str, Any]
+    model_metadata: dict[str, Any]
+    expert: str
+    input_size: int
+
+
+def load_expert_checkpoint(
+    path: Path, *, expected_expert: str, architecture: str
+) -> ExpertCheckpoint:
+    """Validate an expert weight and its training-time preprocessing contract."""
+
+    raw_ids = {"scratch_crack": (1,), "loss": (2,), "shrinkage_craquelure": (3, 4)}
+    payload = load_checkpoint_payload(path)
+    if payload.get("expert") != expected_expert:
+        raise CheckpointContractError("Checkpoint expert does not match selected model")
+    foreground_ids = payload.get("foreground_raw_ids")
+    if (
+        not isinstance(foreground_ids, (tuple, list))
+        or tuple(foreground_ids) != raw_ids[expected_expert]
+    ):
+        raise CheckpointContractError("Checkpoint foreground classes do not match expert")
+    adaptation = validate_sam3_checkpoint(payload)  # Both expert runs use schema 1.
+    config_root = path.parent.parent.parent / "config"
+    try:
+        args = json.loads((config_root / "args.json").read_text(encoding="utf-8"))
+        metadata = json.loads((config_root / "model.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise CheckpointContractError(
+            "Expert checkpoint requires config/args.json and model.json"
+        ) from exc
+    if not isinstance(args, dict) or not isinstance(metadata, dict):
+        raise CheckpointContractError("Expert configuration must contain JSON objects")
+    if args.get("expert") != expected_expert or metadata.get("expert") != expected_expert:
+        raise CheckpointContractError("Run configuration expert does not match checkpoint")
+    if args.get("model_input_size") != 1008 or metadata.get("model_input_size") != 1008:
+        raise CheckpointContractError("Selected expert requires 1008-pixel model input")
+    if metadata.get("source_and_metric_size") != 512:
+        raise CheckpointContractError("Selected expert requires 512-pixel source tiles")
+    if metadata.get("base_checkpoint_sha256") != adaptation.base_checkpoint_sha256:
+        raise CheckpointContractError("Run metadata base checkpoint hash does not match")
+    if architecture == "sam2_adapter":
+        if metadata.get("backbone_input_size") != 1024:
+            raise CheckpointContractError("SAM2 expert requires a 1024-pixel padded backbone")
+        adapter_metadata = metadata.get("adapter_metadata")
+        if (
+            not isinstance(adapter_metadata, dict)
+            or not isinstance(args.get("scale_factor"), int)
+            or not isinstance(args.get("highpass_rate"), (int, float))
+            or args.get("sam2_config") != "configs/sam2.1/sam2.1_hiera_l.yaml"
+            or args.get("scale_factor") != adapter_metadata.get("scale_factor")
+            or args.get("highpass_rate") != adapter_metadata.get("highpass_rate")
+        ):
+            raise CheckpointContractError("SAM2 expert adapter configuration does not match")
+    return ExpertCheckpoint(adaptation, args, metadata, expected_expert, 1008)
 
 
 def load_checkpoint_payload(path: Path) -> dict[str, Any]:

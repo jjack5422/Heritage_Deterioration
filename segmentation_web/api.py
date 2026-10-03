@@ -76,7 +76,9 @@ def create_app(
         window_seconds=app_settings.inference_rate_limit_window_seconds,
     )
     app = Flask(__name__)
-    app.config["MAX_CONTENT_LENGTH"] = app_settings.max_upload_mb * 1024 * 1024
+    max_upload_bytes = app_settings.max_upload_mb * 1024 * 1024
+    # The file limit excludes multipart form headers and inference parameters.
+    app.config["MAX_CONTENT_LENGTH"] = max_upload_bytes + 64 * 1024
     app.extensions["inference_manager"] = manager
     app.extensions["inference_rate_limiter"] = limiter
 
@@ -136,6 +138,11 @@ def create_app(
         )
         if image_upload is None:
             return _error("Image is required", 400)
+        image_upload.stream.seek(0, 2)
+        uploaded_bytes = image_upload.stream.tell()
+        image_upload.stream.seek(0)
+        if uploaded_bytes > max_upload_bytes:
+            return _error("Upload too large", 413)
         if not model_id:
             return _error("Model is required", 400)
         if not weight_name:

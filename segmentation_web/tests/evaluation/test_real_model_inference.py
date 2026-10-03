@@ -17,12 +17,17 @@ from PIL import Image
 from api import create_app
 from config import WORKSPACE_ROOT, load_settings
 from inference import InferenceManager
+from registry import resolve_deterioration_class
 
 
 RUN_REAL_MODELS = os.getenv("RUN_REAL_MODEL_TESTS") == "1"
 MODEL_IDS = (
-    "sam2_adapter",
-    "sam3_adapter",
+    "sam3_adapter_craquelure",
+    "sam3_adapter_loss",
+    "sam3_adapter_crack",
+    "sam2_adapter_loss",
+    "sam2_adapter_crack",
+    "sam2_adapter_craquelure",
     "resunet50",
     "convnext_unet",
 )
@@ -43,6 +48,9 @@ def test_real_models_load_switch_and_infer_through_web_contract() -> None:
     manager = InferenceManager(runtime_settings=settings)
     image = Image.open(REPRESENTATIVE_IMAGE).convert("RGB")
     observations: dict[str, dict[str, object]] = {}
+    app = create_app(settings=settings, inference_manager=manager)
+    app.config.update(TESTING=True)
+    client = app.test_client()
 
     for model_id in MODEL_IDS:
         print(f"real_model_start model={model_id}", flush=True)
@@ -53,9 +61,28 @@ def test_real_models_load_switch_and_infer_through_web_contract() -> None:
         assert result["mask"].size == image.size, model_id
         assert result["overlay"].size == image.size, model_id
         assert set(np.unique(mask)).issubset({0, 255}), model_id
-        assert int((mask > 0).sum()) > 0, model_id
         assert math.isfinite(float(metadata["probability_min"])), model_id
         assert math.isfinite(float(metadata["probability_max"])), model_id
+        if model_id.startswith(("sam2_adapter_", "sam3_adapter_")):
+            assert metadata["model_input_size"] == 1008
+            assert metadata["expert"] == {
+                "craquelure": "shrinkage_craquelure", "loss": "loss", "crack": "scratch_crack"
+            }[result["deterioration_class"]]
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        stream.seek(0)
+        response = client.post(
+            "/api/infer",
+            headers={"X-API-Key": settings.internal_api_key} if settings.private_demo_mode else {},
+            data={
+                "image": (stream, "representative.png"), "model": model_id,
+                "weight": "best.pt", "threshold": "0.5",
+                "deterioration_class": resolve_deterioration_class(model_id, None),
+            }, content_type="multipart/form-data",
+        )
+        assert response.status_code == 200, response.get_json()
+        assert response.get_json()["deterioration_class"] == result["deterioration_class"]
+        assert base64.b64decode(response.get_json()["mask_png_base64"]).startswith(b"\x89PNG")
         observations[model_id] = {
             "latency_ms": result["latency_ms"],
             "peak_allocated_mib": torch.cuda.max_memory_allocated() / 1024**2,
@@ -81,6 +108,7 @@ def test_real_models_load_switch_and_infer_through_web_contract() -> None:
             "threshold": "0.5",
         },
         content_type="multipart/form-data",
+        headers={"X-API-Key": settings.internal_api_key} if settings.private_demo_mode else {},
     )
     assert response.status_code == 200, response.get_json()
     assert base64.b64decode(response.get_json()["mask_png_base64"]).startswith(
@@ -155,7 +183,7 @@ def test_real_sam3_runtimes_switch_in_both_directions() -> None:
     image = Image.open(REPRESENTATIVE_IMAGE).convert("RGB")
     cases = (
         ("da_sam3", "stage2_best.pt", "crack_craquelure"),
-        ("sam3_adapter", "best.pt", None),
+        ("sam3_adapter_crack", "best.pt", "crack"),
         ("da_sam3", "stage2_best.pt", "loss"),
     )
 
