@@ -10,6 +10,17 @@ from config import settings
 
 ALLOWED_CHECKPOINT_EXTENSIONS = frozenset({".pth", ".pt", ".ckpt"})
 BUILT_IN_WEIGHT = "built-in"
+HYBRID_MODEL_ID = "hybrid_three_experts"
+HYBRID_CLASS_ID = "three_deteriorations"
+HYBRID_WEIGHT = "three_best"
+HYBRID_COMPONENTS = (
+    {"class": "craquelure", "label": "龜裂", "model": "sam3_adapter_craquelure",
+     "weight": "best.pt", "color": (204, 121, 167)},
+    {"class": "crack", "label": "裂縫", "model": "sam2_adapter_crack",
+     "weight": "best.pt", "color": (0, 114, 178)},
+    {"class": "loss", "label": "缺失", "model": "sam3_adapter_loss",
+     "weight": "best.pt", "color": (230, 159, 0)},
+)
 DA_SAM3_CLASSES = (
     {"id": "crack_craquelure", "label": "裂縫／龜裂"},
     {"id": "loss", "label": "缺失"},
@@ -19,6 +30,7 @@ DETERIORATION_CLASSES = (
     {"id": "loss", "label": "缺失（loss）"},
     {"id": "crack", "label": "裂縫（crack）"},
     DA_SAM3_CLASSES[0],
+    {"id": HYBRID_CLASS_ID, "label": "龜裂＋裂縫＋缺失"},
 )
 EXPERT_CLASSES = {
     "craquelure": "shrinkage_craquelure",
@@ -64,6 +76,14 @@ MODELS: dict[str, dict[str, Any]] = {
         "weights_subdir": "convnext_unet",
         "adapter": "convnext_unet",
         "deterioration_classes": (DETERIORATION_CLASSES[0],),
+    },
+    HYBRID_MODEL_ID: {
+        "label": "三類混合模型（SAM3 龜裂＋SAM2 裂縫＋SAM3 缺失）",
+        "weights_subdir": None,
+        "virtual_weight": HYBRID_WEIGHT,
+        "adapter": HYBRID_MODEL_ID,
+        "deterioration_classes": (DETERIORATION_CLASSES[-1],),
+        "components": HYBRID_COMPONENTS,
     },
 }
 
@@ -112,6 +132,8 @@ def get_models() -> list[dict[str, Any]]:
         classes = definition.get("deterioration_classes")
         if classes:
             model["deterioration_classes"] = [dict(item) for item in classes]
+        if "components" in definition:
+            model["components"] = [dict(item) for item in definition["components"]]
         models.append(model)
     return models
 
@@ -157,7 +179,15 @@ def get_weights(
     definition = _model(model_id)
     subdir = definition["weights_subdir"]
     if subdir is None:
-        return [BUILT_IN_WEIGHT]
+        if model_id == HYBRID_MODEL_ID:
+            if not all(
+                item["weight"] in get_weights(
+                    item["model"], model_root=model_root, weight_roots=weight_roots
+                )
+                for item in HYBRID_COMPONENTS
+            ):
+                return []
+        return [definition.get("virtual_weight", BUILT_IN_WEIGHT)]
 
     model_dir = _model_dir(
         model_id,
@@ -198,9 +228,10 @@ def get_weight_path(
     definition = _model(model_id)
     subdir = definition["weights_subdir"]
     if subdir is None:
-        if weight_name != BUILT_IN_WEIGHT:
+        virtual_weight = definition.get("virtual_weight", BUILT_IN_WEIGHT)
+        if weight_name != virtual_weight:
             raise InvalidWeightError(
-                f"Invalid weight for {model_id}: expected {BUILT_IN_WEIGHT}"
+                f"Invalid weight for {model_id}: expected {virtual_weight}"
             )
         return None
 

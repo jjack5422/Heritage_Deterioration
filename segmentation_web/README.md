@@ -15,6 +15,7 @@ model through one Flask API and Gradio interface.
   | 缺失 (loss) | SAM3 Adapter loss, SAM2 Adapter loss, DA-SAM3 |
   | 裂縫 (crack) | SAM3 Adapter crack, SAM2 Adapter crack |
   | 裂縫／龜裂 (combined) | DA-SAM3 |
+  | 龜裂＋裂縫＋缺失 | Three-expert hybrid: SAM3 craquelure + SAM2 crack + SAM3 loss |
   | 測試 (Dummy) | Dummy Segmentation |
 
 - Class changes reset both the selected model and its weights. Expert weights default to
@@ -31,6 +32,49 @@ model through one Flask API and Gradio interface.
   Flask does not permanently store them.
 - Model checkpoints are selected from server-side directories only; browser
   users cannot upload weights or choose arbitrary filesystem paths.
+
+## Three-expert hybrid
+
+Select **龜裂＋裂縫＋缺失** to run these three independent models sequentially on
+the same uploaded image. The virtual `three_best` preset fixes each checkpoint
+to `best.pt` from the configured expert root; it is available only when all three
+checkpoints exist.
+
+| Deterioration | Expert model | Color |
+| --- | --- | --- |
+| 龜裂 | `sam3_adapter_craquelure` | Purple `#CC79A7` |
+| 裂縫 | `sam2_adapter_crack` | Blue `#0072B2` |
+| 缺失 | `sam3_adapter_loss` | Orange `#E69F00` |
+
+Each class has its own threshold slider (default `0.50`). The combined RGB mask
+and overlay show overlapping predictions with white diagonal hatching on a
+neutral charcoal region. All independent binary masks are preserved; expand
+**各類結果（可下載 PNG）** to inspect each class's colored overlay and binary mask.
+Combined and per-class results download as lossless PNG at the original resolution.
+The information panel records each model, checkpoint, threshold and duration,
+total hybrid duration, and number of overlapping pixels.
+
+One inference lock covers the entire three-model request. Only one model remains
+loaded on the GPU at a time, and all weights are checked before inference starts.
+If a component fails, the response names that model and returns no partial hybrid
+success. Existing single-model inference remains available in its original category.
+
+For `/api/infer`, use `model=hybrid_three_experts`, `weight=three_best`, and
+`deterioration_class=three_deteriorations` (or omit the class to infer it). Optional
+`threshold_craquelure`, `threshold_crack`, and `threshold_loss` fields default to
+`0.5`. The response contains the usual main PNGs, an RGB `mask_png_base64`,
+`thresholds`, `overlap_pixels`, and three `components` with binary PNG masks,
+class/color/model/checkpoint/threshold/duration metadata. The scalar `threshold`
+is `null` for hybrid responses.
+
+The **顯示劣化** dropdown above the main overlay switches between **全部三類**,
+**龜裂**, **裂縫**, and **缺失**. It uses cached PNGs from the completed prediction
+without another API request or model run. The image label and color legend follow
+the selected class, and the main mask switches with the overlay: all classes use
+the combined RGB mask, while individual classes use their own binary mask. Each
+browser session keeps its own image paths. New predictions default to all three
+classes; changing models clears the previous views and disables this dropdown
+until a new hybrid prediction completes.
 
 ## Architecture
 
@@ -82,7 +126,8 @@ segmentation_web/
 │   ├── unet_adapter.py
 │   └── resunet.py
 ├── imaging/
-│   └── image_processing.py
+│   ├── image_processing.py
+│   └── deterioration_overlay.py
 └── tests/
     ├── architecture/
     ├── datasets/

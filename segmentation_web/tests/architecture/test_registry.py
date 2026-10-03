@@ -22,6 +22,7 @@ def test_get_models_lists_six_experts_and_retains_existing_models() -> None:
         "dummy", "da_sam3", "resunet50", "convnext_unet",
         "sam3_adapter_craquelure", "sam3_adapter_loss", "sam3_adapter_crack",
         "sam2_adapter_craquelure", "sam2_adapter_loss", "sam2_adapter_crack",
+        "hybrid_three_experts",
     }
     assert {item["id"] for item in get_deterioration_classes("resunet50")} == {"craquelure"}
     assert {item["id"] for item in get_deterioration_classes("convnext_unet")} == {"craquelure"}
