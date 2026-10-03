@@ -17,7 +17,7 @@ from PIL import Image
 from api import create_app
 from config import WORKSPACE_ROOT, load_settings
 from inference import InferenceManager
-from registry import resolve_deterioration_class
+from registry import HYBRID_COMPONENTS, HYBRID_MODEL_ID, HYBRID_WEIGHT, resolve_deterioration_class
 
 
 RUN_REAL_MODELS = os.getenv("RUN_REAL_MODEL_TESTS") == "1"
@@ -35,6 +35,45 @@ REPRESENTATIVE_IMAGE = WORKSPACE_ROOT / (
     "datasets/dataset_clean_v2_merged_craquelure/images/"
     "MGLST-DT-1R-A2-1_R1_C04__y00512_x00512.png"
 )
+
+
+@pytest.mark.skipif(not RUN_REAL_MODELS, reason="set RUN_REAL_MODEL_TESTS=1 for GPU integration")
+def test_real_hybrid_api_preserves_all_three_expert_predictions() -> None:
+    assert torch.cuda.is_available(), "RUN_REAL_MODEL_TESTS=1 requires CUDA"
+    settings = load_settings()
+    manager = InferenceManager(runtime_settings=settings)
+    image = Image.open(REPRESENTATIVE_IMAGE).convert("RGB")
+    try:
+        expected = {
+            item["class"]: np.asarray(manager.predict(
+                item["model"], item["weight"], image, .5
+            )["mask"]).copy()
+            for item in HYBRID_COMPONENTS
+        }
+        app = create_app(settings=settings, inference_manager=manager)
+        stream = io.BytesIO()
+        image.save(stream, format="PNG")
+        stream.seek(0)
+        response = app.test_client().post("/api/infer", data={
+            "image": (stream, "wall.png"), "model": HYBRID_MODEL_ID,
+            "weight": HYBRID_WEIGHT,
+        }, headers={"X-API-Key": settings.internal_api_key} if settings.private_demo_mode else {})
+        assert response.status_code == 200, response.get_json()
+        body = response.get_json()
+        assert body["thresholds"] == {item["class"]: .5 for item in HYBRID_COMPONENTS}
+        with Image.open(io.BytesIO(base64.b64decode(body["mask_png_base64"]))) as colored:
+            assert colored.mode == "RGB"
+            assert colored.size == image.size
+        for item in body["components"]:
+            with Image.open(io.BytesIO(base64.b64decode(item["mask_png_base64"]))) as mask:
+                np.testing.assert_array_equal(mask, expected[item["class"]])
+        overlap = np.stack([value > 0 for value in expected.values()]).sum(axis=0) > 1
+        assert body["overlap_pixels"] == int(overlap.sum())
+        assert manager.cached_key == ("sam3_adapter_loss", "best.pt")
+        print(f"real_hybrid_success latency_ms={body['latency_ms']} overlap_pixels={body['overlap_pixels']}", flush=True)
+    finally:
+        manager.unload()
+        torch.cuda.empty_cache()
 
 
 @pytest.mark.skipif(

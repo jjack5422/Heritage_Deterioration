@@ -35,6 +35,8 @@ if str(WORKSPACE_ROOT) not in sys.path:
 from inference import InferenceManager, device_information
 from registry import (
     InvalidWeightError,
+    HYBRID_MODEL_ID,
+    HYBRID_COMPONENTS,
     UnknownModelError,
     get_models,
     get_weights,
@@ -154,6 +156,12 @@ def create_app(
                 model_id,
                 deterioration_class,
             )
+            hybrid_thresholds = None
+            if model_id == HYBRID_MODEL_ID:
+                hybrid_thresholds = {
+                    item["class"]: _threshold(request.form.get(f"threshold_{item['class']}"))
+                    for item in HYBRID_COMPONENTS
+                }
             image = validate_image(
                 image_upload.stream,
                 max_pixels=app_settings.max_image_pixels,
@@ -167,13 +175,18 @@ def create_app(
                 image.width,
                 image.height,
             )
-            result = manager.predict(
-                model_id,
-                weight_name,
-                image,
-                threshold,
-                deterioration_class=deterioration_class,
-            )
+            if model_id == HYBRID_MODEL_ID:
+                result = manager.predict_hybrid(
+                    image, weight_name=weight_name, thresholds=hybrid_thresholds
+                )
+            else:
+                result = manager.predict(
+                    model_id,
+                    weight_name,
+                    image,
+                    threshold,
+                    deterioration_class=deterioration_class,
+                )
         except ImageTooLargeError:
             return _error("Image dimensions too large", 413)
         except InvalidImageError:
@@ -205,6 +218,20 @@ def create_app(
             "mask_png_base64": pil_to_png_base64(result["mask"]),
             "overlay_png_base64": pil_to_png_base64(result["overlay"]),
         }
+        if model_id == HYBRID_MODEL_ID:
+            response["threshold"] = None
+            response["thresholds"] = result["thresholds"]
+            response["overlap_pixels"] = result["metadata"]["overlap_pixels"]
+            response["components"] = [
+                {
+                    "class": item["class"], "label": item["label"],
+                    "model": item["model"], "weight": item["weight"],
+                    "threshold": item["threshold"], "color": item["color"],
+                    "latency_ms": round(float(item["latency_ms"]), 3),
+                    "mask_png_base64": pil_to_png_base64(item["mask"]),
+                }
+                for item in result["components"]
+            ]
         return jsonify(response)
 
     return app

@@ -6,7 +6,7 @@ import gc
 import logging
 import threading
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from functools import partial
 from pathlib import Path
 from typing import Any
@@ -25,8 +25,14 @@ from adapters import (
 )
 from config import Settings, settings
 from imaging.image_processing import binary_mask_to_pil
+from imaging.deterioration_overlay import compose_deterioration_masks
 from registry import (
     MODELS,
+    HYBRID_MODEL_ID,
+    HYBRID_CLASS_ID,
+    HYBRID_WEIGHT,
+    HYBRID_COMPONENTS,
+    InvalidWeightError,
     get_adapter_name,
     get_weight_path,
     resolve_deterioration_class,
@@ -53,6 +59,10 @@ def _default_weight_resolver(
     model_id: str, weight_name: str, model_root: Path
 ) -> Path | None:
     return get_weight_path(model_id, weight_name, model_root=model_root)
+
+
+class HybridInferenceError(RuntimeError):
+    """A named component failed; no partial hybrid result is returned."""
 
 
 class InferenceManager:
@@ -167,52 +177,137 @@ class InferenceManager:
             deterioration_class = resolve_deterioration_class(
                 model_id, deterioration_class
             )
+        if model_id == HYBRID_MODEL_ID:
+            return self.predict_hybrid(
+                image, weight_name=weight_name,
+                thresholds={item["class"]: threshold for item in HYBRID_COMPONENTS},
+            )
+        with self._inference_lock:
+            return self._predict_locked(
+                model_id, weight_name, image, threshold, deterioration_class
+            )
+
+    def _predict_locked(
+        self, model_id: str, weight_name: str, image: Image.Image,
+        threshold: float, deterioration_class: str | None,
+    ) -> dict[str, Any]:
+        """Run one model while the caller owns the entire inference lock."""
+
         adapter_class = deterioration_class
         if model_id in MODELS and get_adapter_name(model_id) != "da_sam3":
             adapter_class = None
+        started = time.perf_counter()
+        LOGGER.info(
+            "Inference start model=%s weight=%s class=%s threshold=%.2f",
+            model_id,
+            weight_name,
+            deterioration_class,
+            threshold,
+        )
+        adapter = self._load_adapter(model_id, weight_name)
+        with torch.inference_mode():
+            if adapter_class is None:
+                prediction = adapter.predict(image.convert("RGB"), threshold)
+            else:
+                prediction = adapter.predict(
+                    image.convert("RGB"),
+                    threshold,
+                    deterioration_class=adapter_class,
+                )
+        latency_ms = (time.perf_counter() - started) * 1000
+        mask = binary_mask_to_pil(prediction["mask"])
+        overlay = prediction["overlay"].convert("RGB")
+        device = str(device_information()["device"])
+        LOGGER.info(
+            "Inference success model=%s weight=%s latency_ms=%.2f device=%s",
+            model_id,
+            weight_name,
+            latency_ms,
+            device,
+        )
+        return {
+            "mask": mask,
+            "overlay": overlay,
+            "latency_ms": latency_ms,
+            "model": model_id,
+            "weight": weight_name,
+            "deterioration_class": deterioration_class,
+            "device": device,
+            "metadata": {
+                **prediction.get("metadata", {}),
+                "deterioration_class": deterioration_class,
+            },
+        }
+
+    def predict_hybrid(
+        self, image: Image.Image, *, weight_name: str = HYBRID_WEIGHT,
+        thresholds: Mapping[str, float] | None = None,
+    ) -> dict[str, Any]:
+        """Run the fixed three experts atomically and keep every binary mask."""
+
+        if weight_name != HYBRID_WEIGHT:
+            raise InvalidWeightError("Hybrid model requires the three_best weight preset")
+        selected = {item["class"]: 0.5 for item in HYBRID_COMPONENTS}
+        if thresholds is not None:
+            if set(thresholds) - set(selected):
+                raise ValueError("Invalid hybrid thresholds")
+            try:
+                selected.update({key: float(value) for key, value in thresholds.items()})
+            except (TypeError, ValueError) as exc:
+                raise ValueError("Invalid hybrid thresholds") from exc
+        if any(not 0 <= value <= 1 for value in selected.values()):
+            raise ValueError("Invalid hybrid thresholds")
 
         with self._inference_lock:
             started = time.perf_counter()
-            LOGGER.info(
-                "Inference start model=%s weight=%s class=%s threshold=%.2f",
-                model_id,
-                weight_name,
-                deterioration_class,
-                threshold,
-            )
-            adapter = self._load_adapter(model_id, weight_name)
-            with torch.inference_mode():
-                if adapter_class is None:
-                    prediction = adapter.predict(image.convert("RGB"), threshold)
-                else:
-                    prediction = adapter.predict(
-                        image.convert("RGB"),
-                        threshold,
-                        deterioration_class=adapter_class,
+            source = image.convert("RGB")
+            # Check every required weight before starting the first expert.
+            for component in HYBRID_COMPONENTS:
+                try:
+                    self._weight_resolver(component["model"], component["weight"], self.model_root)
+                except Exception as exc:
+                    raise HybridInferenceError(
+                        f"Hybrid inference failed for {component['model']}"
+                    ) from exc
+            components = []
+            for component in HYBRID_COMPONENTS:
+                try:
+                    result = self._predict_locked(
+                        component["model"], component["weight"], source,
+                        selected[component["class"]], component["class"],
                     )
-            latency_ms = (time.perf_counter() - started) * 1000
-            mask = binary_mask_to_pil(prediction["mask"])
-            overlay = prediction["overlay"].convert("RGB")
-            device = str(device_information()["device"])
-            LOGGER.info(
-                "Inference success model=%s weight=%s latency_ms=%.2f device=%s",
-                model_id,
-                weight_name,
-                latency_ms,
-                device,
+                except Exception as exc:
+                    LOGGER.exception("Hybrid component failed model=%s", component["model"])
+                    if self._cached_adapter is not None:
+                        self._cached_adapter.unload()
+                    self._cached_adapter = None
+                    self._cached_key = None
+                    gc.collect()
+                    if torch.cuda.is_available():
+                        torch.cuda.empty_cache()
+                    raise HybridInferenceError(
+                        f"Hybrid inference failed for {component['model']}"
+                    ) from exc
+                # Only masks travel to the UI; per-class overlays are drawn there.
+                result.pop("overlay")
+                result.update({
+                    "class": component["class"], "label": component["label"],
+                    "color": component["color"], "threshold": selected[component["class"]],
+                })
+                components.append(result)
+            composed = compose_deterioration_masks(
+                source,
+                {item["class"]: item["mask"] for item in components},
+                {item["class"]: item["color"] for item in components},
             )
             return {
-                "mask": mask,
-                "overlay": overlay,
-                "latency_ms": latency_ms,
-                "model": model_id,
-                "weight": weight_name,
-                "deterioration_class": deterioration_class,
-                "device": device,
-                "metadata": {
-                    **prediction.get("metadata", {}),
-                    "deterioration_class": deterioration_class,
-                },
+                "model": HYBRID_MODEL_ID, "weight": HYBRID_WEIGHT,
+                "deterioration_class": HYBRID_CLASS_ID, "thresholds": selected,
+                "device": str(device_information()["device"]),
+                "latency_ms": (time.perf_counter() - started) * 1000,
+                "mask": composed["mask"], "overlay": composed["overlay"],
+                "components": components,
+                "metadata": {"overlap_pixels": composed["overlap_pixels"]},
             }
 
     def unload(self) -> None:

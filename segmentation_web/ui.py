@@ -10,6 +10,7 @@ from typing import Any
 from urllib.parse import quote
 
 import gradio as gr
+from gradio.processing_utils import save_pil_to_cache
 import requests
 from PIL import Image
 
@@ -24,8 +25,12 @@ from imaging.image_processing import (
     ImageTooLargeError,
     InvalidImageError,
     validate_image,
+    make_overlay,
 )
-from registry import DETERIORATION_CLASSES, get_deterioration_classes
+from registry import (
+    DETERIORATION_CLASSES, get_deterioration_classes,
+    HYBRID_MODEL_ID, HYBRID_WEIGHT, HYBRID_COMPONENTS,
+)
 
 
 LOGGER = logging.getLogger(__name__)
@@ -36,6 +41,7 @@ MODEL_LABELS_ZH = {
     "da_sam3": "DA-SAM3",
     "resunet50": "ResUNet50 分割模型",
     "convnext_unet": "ConvNeXt-Large U-Net 分割模型",
+    HYBRID_MODEL_ID: "三類混合模型",
 }
 
 DA_SAM3_MODEL_ID = "da_sam3"
@@ -48,6 +54,19 @@ DETERIORATION_CLASS_LABELS = {
 }
 CLASS_CHOICES = tuple((item["label"], item["id"]) for item in DETERIORATION_CLASSES)
 TEST_CLASS = "test"
+HYBRID_WEIGHT_LABEL = "三模型最佳權重（best.pt）"
+OVERLAY_VIEW_CHOICES = [("全部三類", "all")] + [
+    (item["label"], item["class"]) for item in HYBRID_COMPONENTS
+]
+OVERLAY_VIEW_LABELS = {value: label for label, value in OVERLAY_VIEW_CHOICES}
+HYBRID_LEGEND_HTML = '<ul class="hybrid-legend" aria-label="劣化顏色圖例">' + "".join(
+    '<li><span class="legend-swatch" aria-hidden="true" style="background:rgb'
+    + str(item["color"]) + '"></span>' + item["label"] + '</li>'
+    for item in HYBRID_COMPONENTS
+) + '''<li><svg class="legend-swatch" aria-hidden="true" viewBox="0 0 20 20">
+<rect width="20" height="20" fill="#464646"/>
+<path d="M-5 10L10-5M0 20L20 0M10 25L25 10" stroke="white" stroke-width="3"/>
+</svg>重疊區域（白色斜線）</li></ul>'''
 
 
 def model_choices_for_class(
@@ -115,6 +134,29 @@ PRECISION_LAB_CSS = r"""
     color: var(--lab-text);
     background: var(--lab-bg);
     font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans TC", sans-serif;
+}
+
+/* Gradio 6 does not render the Blocks elem_id on its page container. */
+.result-panel .hybrid-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px 20px;
+    margin: 8px 0;
+    padding: 0;
+    list-style: none;
+    color: #1c2430;
+}
+.result-panel .hybrid-legend li {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+.result-panel .legend-swatch {
+    width: 20px;
+    height: 20px;
+    display: inline-block;
+    flex: none;
+    border: 1px solid #b8c0ca;
 }
 
 #precision-lab main,
@@ -555,7 +597,12 @@ class InferenceApiClient:
             else:
                 message = "Flask API request failed"
             raise ApiClientError(
-                _localized_api_error(str(message), response.status_code)
+                (
+                    "混合推論失敗：" + str(message).split("Hybrid inference failed for ", 1)[1]
+                    + "。此次未產生完整混合結果。"
+                    if str(message).startswith("Hybrid inference failed for ")
+                    else _localized_api_error(str(message), response.status_code)
+                )
             )
         return payload
 
@@ -611,6 +658,7 @@ class InferenceApiClient:
         weight_name: str,
         threshold: float,
         deterioration_class: str | None = None,
+        thresholds: dict[str, float] | None = None,
     ) -> dict[str, Any]:
         if image is None:
             raise ApiClientError("請先上傳圖片")
@@ -637,6 +685,12 @@ class InferenceApiClient:
         }
         if deterioration_class is not None:
             form_data["deterioration_class"] = deterioration_class
+        if model_id == HYBRID_MODEL_ID:
+            for item in HYBRID_COMPONENTS:
+                class_id = item["class"]
+                form_data[f"threshold_{class_id}"] = str(
+                    (thresholds or {}).get(class_id, 0.5)
+                )
         try:
             response = self.session.post(
                 f"{self.base_url}/api/infer",
@@ -652,30 +706,51 @@ class InferenceApiClient:
             raise ApiClientError("Flask API 回傳的推論結果格式無效")
 
         try:
-            mask = base64_png_to_pil(str(payload["mask_png_base64"])).convert("L")
+            hybrid = model_id == HYBRID_MODEL_ID
+            mask = base64_png_to_pil(str(payload["mask_png_base64"]))
+            if not hybrid:
+                mask = mask.convert("L")
             overlay = base64_png_to_pil(str(payload["overlay_png_base64"]))
+            components = []
+            if hybrid:
+                received = payload["components"]
+                if len(received) != len(HYBRID_COMPONENTS):
+                    raise ValueError("Incomplete hybrid components")
+                by_class = {item["class"]: item for item in received}
+                for definition in HYBRID_COMPONENTS:
+                    item = by_class[definition["class"]]
+                    if item["model"] != definition["model"] or item["weight"] != definition["weight"]:
+                        raise ValueError("Unexpected hybrid component")
+                    component_mask = base64_png_to_pil(item["mask_png_base64"]).convert("L")
+                    if component_mask.size != mask.size:
+                        raise ValueError("Hybrid mask sizes differ")
+                    components.append({**item, "mask": component_mask})
             metadata_lines = [
-                f"模型：{payload['model']}",
-                f"模型權重：{payload['weight']}",
+                f"模型：{MODEL_LABELS_ZH[HYBRID_MODEL_ID] if hybrid else payload['model']}",
+                f"模型權重：{HYBRID_WEIGHT_LABEL if hybrid else payload['weight']}",
             ]
             selected_class = payload.get("deterioration_class")
             if selected_class is not None:
-                class_label = DETERIORATION_CLASS_LABELS.get(
-                    str(selected_class),
-                    str(selected_class),
-                )
+                class_label = DETERIORATION_CLASS_LABELS.get(str(selected_class), str(selected_class))
                 metadata_lines.append(f"劣化類別：{class_label}")
-            metadata_lines.extend(
-                [
-                    f"遮罩閾值：{float(payload['threshold']):.2f}",
-                    f"執行裝置：{payload['device']}",
-                    f"推論時間：{float(payload['latency_ms']):.1f} 毫秒",
-                ]
-            )
+            if hybrid:
+                for item in components:
+                    metadata_lines.append(
+                        f"{item['label']}：{item['model']} / {item['weight']} / "
+                        f"閾值 {float(item['threshold']):.2f} / {float(item['latency_ms']) / 1000:.2f} 秒"
+                    )
+                metadata_lines.append(f"重疊像素：{int(payload['overlap_pixels']):,}（保留各類判定）")
+            else:
+                metadata_lines.append(f"遮罩閾值：{float(payload['threshold']):.2f}")
+            metadata_lines.extend([
+                f"執行裝置：{payload['device']}",
+                f"{'整體' if hybrid else '推論'}時間：{float(payload['latency_ms']):.1f} 毫秒",
+            ])
             metadata = "\n".join(metadata_lines)
         except (KeyError, TypeError, ValueError) as exc:
             raise ApiClientError("Flask API 回傳的推論資料不完整") from exc
-        return {"mask": mask, "overlay": overlay, "metadata": metadata}
+        return {"mask": mask, "overlay": overlay, "metadata": metadata, "components": components}
+
 
 
 def create_ui(
@@ -735,7 +810,8 @@ def create_ui(
             if not weights:
                 gr.Warning("找不到相容的模型權重")
                 return gr.Dropdown(choices=[], value=None)
-            return gr.Dropdown(choices=weights, value=weights[0])
+            choices = [(HYBRID_WEIGHT_LABEL, weight) if weight == HYBRID_WEIGHT else weight for weight in weights]
+            return gr.Dropdown(choices=choices, value=weights[0])
         except ApiClientError as exc:
             raise gr.Error(str(exc)) from exc
 
@@ -745,6 +821,9 @@ def create_ui(
         weight_name: str | None,
         deterioration_class: str | None,
         threshold: float,
+        threshold_craquelure: float = 0.5,
+        threshold_crack: float = 0.5,
+        threshold_loss: float = 0.5,
     ):
         try:
             if image is None:
@@ -755,22 +834,84 @@ def create_ui(
                     max_pixels=app_settings.max_image_pixels,
                     max_side=app_settings.max_image_side,
                 )
-            result = client.infer(
-                image,
-                model_id or "",
-                weight_name or "",
-                threshold,
+            arguments = (
+                image, model_id or "", weight_name or "", threshold,
                 None if deterioration_class == TEST_CLASS else deterioration_class,
             )
-            return original, result["mask"], result["overlay"], result[
-                "metadata"
-            ]
+            if model_id == HYBRID_MODEL_ID:
+                result = client.infer(*arguments, thresholds={
+                    "craquelure": threshold_craquelure,
+                    "crack": threshold_crack, "loss": threshold_loss,
+                })
+                component_images = []
+                # Keep only cached PNG paths in session state, not full-size image copies.
+                overlay_views = {"all": {
+                    "overlay": save_pil_to_cache(result["overlay"], demo.GRADIO_CACHE, format="png"),
+                    "mask": save_pil_to_cache(result["mask"], demo.GRADIO_CACHE, format="png"),
+                }}
+                for item in result["components"]:
+                    overlay_views[item["class"]] = {
+                        "overlay": save_pil_to_cache(
+                            make_overlay(original, item["mask"], color=tuple(item["color"])),
+                            demo.GRADIO_CACHE, format="png",
+                        ),
+                        "mask": save_pil_to_cache(item["mask"], demo.GRADIO_CACHE, format="png"),
+                    }
+                    component_images.extend([
+                        overlay_views[item["class"]]["overlay"],
+                        overlay_views[item["class"]]["mask"],
+                    ])
+                overlay = overlay_views["all"]["overlay"]
+                mask = overlay_views["all"]["mask"]
+            else:
+                result = client.infer(*arguments)
+                component_images = [None] * 6
+                overlay_views = {}
+                overlay = result["overlay"]
+                mask = result["mask"]
+            return (
+                original, gr.update(value=mask, label="彩色遮罩" if overlay_views else "二值遮罩"),
+                gr.update(value=overlay, label="分割疊合圖"),
+                result["metadata"], *component_images, overlay_views,
+                gr.update(value="all", interactive=bool(overlay_views)),
+                gr.update(value=HYBRID_LEGEND_HTML),
+            )
         except ImageTooLargeError as exc:
             raise gr.Error(API_ERROR_MESSAGES_ZH["Image dimensions too large"]) from exc
         except (InvalidImageError, OSError) as exc:
             raise gr.Error(API_ERROR_MESSAGES_ZH["Invalid image"]) from exc
         except ApiClientError as exc:
             raise gr.Error(str(exc)) from exc
+
+    def update_model_mode(model_id: str):
+        hybrid = model_id == HYBRID_MODEL_ID
+        return (
+            gr.update(visible=not hybrid), gr.update(visible=hybrid),
+            gr.update(visible=hybrid, value=HYBRID_LEGEND_HTML), gr.update(visible=hybrid),
+            gr.update(value=None, label="彩色遮罩" if hybrid else "二值遮罩"),
+            None, gr.update(value=None, label="分割疊合圖"), "等待推論", *([None] * 6),
+            {}, gr.update(visible=hybrid, value="all", interactive=False),
+        )
+
+    def select_overlay_view(view: str, overlay_views: dict[str, dict[str, str]]):
+        if view not in OVERLAY_VIEW_LABELS:
+            raise gr.Error("請選擇有效的疊合圖類別")
+        label = "分割疊合圖" if view == "all" else f"{OVERLAY_VIEW_LABELS[view]}疊合圖"
+        legend = HYBRID_LEGEND_HTML
+        if view != "all":
+            item = next(item for item in HYBRID_COMPONENTS if item["class"] == view)
+            legend = (
+                '<ul class="hybrid-legend" aria-label="劣化顏色圖例"><li>'
+                f'<span class="legend-swatch" aria-hidden="true" style="background:rgb{item["color"]}"></span>'
+                f'{item["label"]}</li></ul>'
+            )
+        selected = overlay_views.get(view, {})
+        mask_label = "彩色遮罩" if view == "all" else f"{OVERLAY_VIEW_LABELS[view]}二值遮罩"
+        return (
+            gr.update(value=selected.get("overlay"), label=label),
+            gr.update(value=legend),
+            gr.update(value=selected.get("mask"), label=mask_label),
+        )
 
     with gr.Blocks(
         title="古蹟劣化偵測",
@@ -853,6 +994,16 @@ def create_ui(
                     label="遮罩閾值",
                     elem_id="threshold-slider",
                 )
+                with gr.Column(visible=False, elem_id="hybrid-thresholds") as hybrid_controls:
+                    threshold_craquelure = gr.Slider(
+                        0.0, 1.0, value=0.5, step=0.01, label="龜裂閾值（SAM3 Adapter）",
+                    )
+                    threshold_crack = gr.Slider(
+                        0.0, 1.0, value=0.5, step=0.01, label="裂縫閾值（SAM2 Adapter）",
+                    )
+                    threshold_loss = gr.Slider(
+                        0.0, 1.0, value=0.5, step=0.01, label="缺失閾值（SAM3 Adapter）",
+                    )
                 gr.HTML(
                     '<p class="threshold-note">0.00 較敏感 · 1.00 較嚴格</p>'
                 )
@@ -874,8 +1025,16 @@ def create_ui(
                     </div>
                     """
                 )
+                hybrid_legend = gr.HTML(HYBRID_LEGEND_HTML, visible=False)
+                overlay_view_dropdown = gr.Dropdown(
+                    choices=OVERLAY_VIEW_CHOICES, value="all", label="顯示劣化",
+                    info="同步切換疊合圖與遮罩，不需重新推論",
+                    visible=False, interactive=False, allow_custom_value=False,
+                    elem_id="overlay-view-dropdown",
+                )
                 overlay_output = gr.Image(
                     label="分割疊合圖",
+                    format="png",
                     height=470,
                     interactive=False,
                     elem_id="overlay-output",
@@ -890,7 +1049,9 @@ def create_ui(
                     )
                     mask_output = gr.Image(
                         label="二值遮罩",
-                        image_mode="L",
+                        elem_id="mask-output",
+                        image_mode="RGB",
+                        format="png",
                         height=230,
                         interactive=False,
                         elem_classes=["output-stage"],
@@ -906,7 +1067,23 @@ def create_ui(
                     elem_classes=["telemetry-panel"],
                 )
 
+                component_outputs = []
+                with gr.Accordion("各類結果（可下載 PNG）", open=False, visible=False) as hybrid_details:
+                    with gr.Tabs():
+                        for item in HYBRID_COMPONENTS:
+                            with gr.Tab(item["label"]):
+                                with gr.Row():
+                                    component_outputs.append(gr.Image(
+                                        label=f"{item['label']}疊合圖", format="png",
+                                        interactive=False, height=280,
+                                    ))
+                                    component_outputs.append(gr.Image(
+                                        label=f"{item['label']}二值遮罩", format="png",
+                                        image_mode="L", interactive=False, height=280,
+                                    ))
+
         models_state = gr.State([])
+        overlay_views_state = gr.State({})
         demo.load(
             fn=load_models,
             outputs=[
@@ -935,6 +1112,17 @@ def create_ui(
             show_progress="minimal",
             api_visibility="private",
         )
+        model_dropdown.change(
+            fn=update_model_mode,
+            inputs=model_dropdown,
+            outputs=[
+                threshold_slider, hybrid_controls, hybrid_legend, hybrid_details,
+                mask_output, original_output, overlay_output, information_output,
+                *component_outputs,
+                overlay_views_state, overlay_view_dropdown,
+            ],
+            queue=False, show_progress="hidden", api_visibility="private",
+        )
         run_button.click(
             fn=run_inference,
             inputs=[
@@ -943,18 +1131,26 @@ def create_ui(
                 weight_dropdown,
                 deterioration_dropdown,
                 threshold_slider,
+                threshold_craquelure, threshold_crack, threshold_loss,
             ],
             outputs=[
                 original_output,
                 mask_output,
                 overlay_output,
                 information_output,
+                *component_outputs,
+                overlay_views_state, overlay_view_dropdown, hybrid_legend,
             ],
             concurrency_limit=1,
             concurrency_id="segmentation_inference",
             show_progress="minimal",
             scroll_to_output=True,
             api_visibility="private",
+        )
+        overlay_view_dropdown.input(
+            fn=select_overlay_view, inputs=[overlay_view_dropdown, overlay_views_state],
+            outputs=[overlay_output, hybrid_legend, mask_output], queue=False,
+            show_progress="hidden", api_visibility="private",
         )
 
     return demo.queue(

@@ -235,7 +235,7 @@ def test_ui_preprocess_and_handler_accept_large_photo_and_preserve_dimensions(tm
     image = handler.inputs[0].preprocess(ImageData(path=str(path), orig_name=path.name))
     assert image == str(path)
     result = handler.fn(image, "dummy", "built-in", "test", 0.5)
-    assert [item.size for item in result[:3]] == [(5472, 3648)] * 3
+    assert [result[0].size, result[1]["value"].size, result[2]["value"].size] == [(5472, 3648)] * 3
 
 
 def test_ui_category_change_resets_model_and_weight_and_model_change_keeps_class() -> None:
@@ -268,7 +268,7 @@ def test_ui_category_change_resets_model_and_weight_and_model_change_keeps_class
     config = demo.get_config_file()
     dropdowns = [item["props"] for item in config["components"] if item["type"] == "dropdown"]
     assert [item["elem_id"] for item in dropdowns] == [
-        "deterioration-dropdown", "model-dropdown", "weight-dropdown"
+        "deterioration-dropdown", "model-dropdown", "weight-dropdown", "overlay-view-dropdown"
     ]
     assert all(item["allow_custom_value"] is False for item in dropdowns)
 
