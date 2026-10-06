@@ -144,6 +144,269 @@ def _validate_row(row: object, partition: str) -> dict[str, str]:
     return normalized
 
 
+def _transfer_sort_rows(rows: Sequence[Mapping[str, str]]) -> tuple[Mapping[str, str], ...]:
+    return tuple(
+        sorted(
+            rows,
+            key=lambda row: (
+                0 if row["dataset"] == "dataset_jacky" else 1,
+                row["source_group"],
+                row["tile"],
+            ),
+        )
+    )
+
+def _prepare_group_transfer_data_plan(
+    manifest_path: Path,
+    expert: str,
+    payload: Mapping[str, Any],
+) -> ExpertDataPlan:
+    """Validate a portable, pre-split, source-group-locked transfer manifest."""
+
+    if payload.get("expert") != expert:
+        raise ExpertDataContractError("manifest expert does not match the requested expert")
+    if tuple(payload.get("expert_raw_ids", ())) != EXPERT_RAW_IDS[expert]:
+        raise ExpertDataContractError("manifest foreground IDs do not match the approved expert contract")
+    expected_dataset_policy = {
+        "dataset_jacky": "training_only_all_743_tiles",
+        "dataset115_filtered": "source_group_locked_train_validation_test",
+        "checkpoint_selection": "validation_only",
+        "test": "evaluate_once_after_checkpoint_selection",
+    }
+    if payload.get("dataset_policy") != expected_dataset_policy:
+        raise ExpertDataContractError("transfer manifest dataset policy is invalid")
+    expected_split_policy = {
+        "strategy": "current_inference_f1_ranked_source_group",
+        "threshold": 0.5,
+        "source_group_constraint": "disjoint_across_training_validation_test",
+        "jacky_policy": "all_tiles_training_only",
+        "test_selection": "highest_clean_candidate_pooled_pixel_f1",
+        "validation_selection": "next_clean_candidate_groups_by_pooled_pixel_f1",
+    }
+    if payload.get("split_policy") != expected_split_policy:
+        raise ExpertDataContractError("transfer manifest split policy is invalid")
+    if payload.get("split_id") != "2026-09-25_expanded_dataset115_jacky_f1_ranked_source_group_v1":
+        raise ExpertDataContractError("transfer manifest split_id is not the supported expanded-data split")
+    dataset_roots = payload.get("dataset_roots")
+    if not isinstance(dataset_roots, dict) or set(dataset_roots) != {"dataset115_filtered", "dataset_jacky"}:
+        raise ExpertDataContractError("transfer manifest must map both dataset roots")
+    relative_roots: dict[str, Path] = {}
+    for dataset, root_value in dataset_roots.items():
+        root = Path(str(root_value))
+        if root.is_absolute() or not root.parts or ".." in root.parts:
+            raise ExpertDataContractError(f"dataset root must be a safe project-relative path: {root_value}")
+        relative_roots[dataset] = root
+
+    partitions: dict[str, tuple[dict[str, str], ...]] = {}
+    for name in PARTITIONS:
+        raw_rows = payload.get(name)
+        if not isinstance(raw_rows, list):
+            raise ExpertDataContractError(f"{name} partition must be a list")
+        validated: list[dict[str, str]] = []
+        for row in raw_rows:
+            normalized = _validate_row(row, name)
+            for field in ("image", "mask"):
+                path = Path(normalized[field])
+                root = relative_roots[normalized["dataset"]]
+                if path.is_absolute() or path.parts[: len(root.parts)] != root.parts or len(path.parts) <= len(root.parts):
+                    raise ExpertDataContractError(f"transfer path is outside its dataset root: {path}")
+            validated.append(normalized)
+        partitions[name] = _transfer_sort_rows(validated)
+        if not partitions[name]:
+            raise ExpertDataContractError(f"{name} partition must not be empty")
+
+    rows_by_partition = partitions
+    all_rows = tuple(row for name in PARTITIONS for row in rows_by_partition[name])
+    identities = {
+        (row["dataset"], row["tile"])
+        for row in all_rows
+    }
+    if len(identities) != len(all_rows):
+        raise ExpertDataContractError("transfer manifest contains duplicate dataset-qualified tile identities")
+
+    actual_inventory = {
+        dataset: {
+            "tiles": sum(row["dataset"] == dataset for row in all_rows),
+            "source_groups": len({row["source_group"] for row in all_rows if row["dataset"] == dataset}),
+        }
+        for dataset in ("dataset115_filtered", "dataset_jacky")
+    }
+    inventory = payload.get("inventory")
+    if not isinstance(inventory, dict) or any(inventory.get(key) != value for key, value in actual_inventory.items()):
+        raise ExpertDataContractError("transfer manifest inventory counts do not match its rows")
+    logical_tiles = sum(value["tiles"] for value in actual_inventory.values())
+    if inventory.get("logical_total_tiles") != logical_tiles:
+        raise ExpertDataContractError("transfer manifest logical inventory count does not match its rows")
+    if actual_inventory["dataset_jacky"]["tiles"] != 743:
+        raise ExpertDataContractError("all 743 dataset_jacky tiles must be included")
+    if any(row["dataset"] == "dataset_jacky" for name in ("validation", "test") for row in rows_by_partition[name]):
+        raise ExpertDataContractError("dataset_jacky may appear only in training")
+    if any(row["dataset"] != "dataset115_filtered" for name in ("validation", "test") for row in rows_by_partition[name]):
+        raise ExpertDataContractError("validation and test must contain only dataset115_filtered")
+
+    actual_stats: dict[str, dict[str, Any]] = {}
+    actual_groups: dict[str, dict[str, list[str]]] = {}
+    partition_group_keys: dict[str, set[tuple[str, str]]] = {}
+    partition_image_hashes: dict[str, set[str]] = {}
+    for name, rows in rows_by_partition.items():
+        dataset_tiles = {
+            dataset: sum(row["dataset"] == dataset for row in rows)
+            for dataset in ("dataset115_filtered", "dataset_jacky")
+        }
+        dataset_groups = {
+            dataset: sorted({row["source_group"] for row in rows if row["dataset"] == dataset})
+            for dataset in ("dataset115_filtered", "dataset_jacky")
+        }
+        actual_stats[name] = {
+            "tiles": len(rows),
+            "dataset_tiles": dataset_tiles,
+            "dataset_source_groups": {dataset: len(groups) for dataset, groups in dataset_groups.items()},
+        }
+        actual_groups[name] = dataset_groups
+        partition_group_keys[name] = {
+            (row["dataset"], row["source_group"])
+            for row in rows
+        }
+        partition_image_hashes[name] = {row["image_sha256"] for row in rows}
+    if payload.get("partition_stats") != actual_stats:
+        raise ExpertDataContractError("transfer manifest partition statistics do not match its rows")
+    if payload.get("locked_groups") != actual_groups:
+        raise ExpertDataContractError("transfer manifest group membership does not match its rows")
+
+    for left_index, left in enumerate(PARTITIONS):
+        for right in PARTITIONS[left_index + 1 :]:
+            if partition_group_keys[left] & partition_group_keys[right]:
+                raise ExpertDataContractError(f"{left}/{right} source-group leakage")
+            if partition_image_hashes[left] & partition_image_hashes[right]:
+                raise ExpertDataContractError(f"{left}/{right} image-hash leakage")
+    d115_groups = {
+        row["source_group"]
+        for row in all_rows
+        if row["dataset"] == "dataset115_filtered"
+    }
+    jacky_groups = {
+        row["source_group"]
+        for row in all_rows
+        if row["dataset"] == "dataset_jacky"
+    }
+    collisions = sorted(d115_groups & jacky_groups)
+    if payload.get("jacky_source_group_collisions") != collisions:
+        raise ExpertDataContractError("cross-dataset source-group collision list does not match the inventory")
+    for group in collisions:
+        if group not in actual_groups["training"]["dataset115_filtered"] or group not in actual_groups["training"]["dataset_jacky"]:
+            raise ExpertDataContractError(f"shared source group {group!r} must stay in training")
+
+    ranked_groups = payload.get("ranked_dataset115_groups")
+    if not isinstance(ranked_groups, list):
+        raise ExpertDataContractError("ranked Dataset115 source-group records are required")
+    ranked_by_group = {str(row.get("source_group")): row for row in ranked_groups if isinstance(row, dict)}
+    if len(ranked_by_group) != len(ranked_groups) or set(ranked_by_group) != d115_groups:
+        raise ExpertDataContractError("ranked Dataset115 groups do not match the data inventory")
+    d115_tile_counts = {
+        group: sum(row["source_group"] == group and row["dataset"] == "dataset115_filtered" for row in all_rows)
+        for group in d115_groups
+    }
+    for group, record in ranked_by_group.items():
+        partition = next(
+            name for name in PARTITIONS
+            if group in actual_groups[name]["dataset115_filtered"]
+        )
+        if record.get("partition") != partition or record.get("tile_count") != d115_tile_counts[group]:
+            raise ExpertDataContractError(f"ranked group record drifted for {group}")
+        if partition in {"validation", "test"} and record.get("previous_run_role") in {"training", "validation"}:
+            raise ExpertDataContractError(f"historical training/validation group {group} reused as held-out data")
+    test_ranks = sorted(
+        record.get("rank_in_clean_test_candidate_pool")
+        for record in ranked_by_group.values()
+        if record.get("partition") == "test"
+    )
+    validation_ranks = sorted(
+        record.get("rank_in_clean_test_candidate_pool")
+        for record in ranked_by_group.values()
+        if record.get("partition") == "validation"
+    )
+    if test_ranks != list(range(1, len(test_ranks) + 1)):
+        raise ExpertDataContractError("test candidate ranks must be contiguous from the top")
+    if validation_ranks != list(range(len(test_ranks) + 1, len(test_ranks) + len(validation_ranks) + 1)):
+        raise ExpertDataContractError("validation candidate ranks must follow the selected test ranks")
+    for partition in ("test", "validation"):
+        ranked_scores = [
+            float(record["current_inference_pooled_f1"])
+            for record in sorted(
+                (r for r in ranked_by_group.values() if r.get("partition") == partition),
+                key=lambda r: r["rank_in_clean_test_candidate_pool"],
+            )
+        ]
+        if any(left < right for left, right in zip(ranked_scores, ranked_scores[1:])):
+            raise ExpertDataContractError(f"{partition} groups are not ordered by descending inference F1")
+
+    source_hashes = payload.get("source_hashes")
+    if not isinstance(source_hashes, dict) or not source_hashes:
+        raise ExpertDataContractError("transfer manifest source hashes are required")
+    for relative_path, expected_hash in source_hashes.items():
+        source_path = Path(relative_path)
+        if source_path.is_absolute() or not source_path.is_file() or _sha256(source_path) != expected_hash:
+            raise ExpertDataContractError(f"transfer source hash mismatch: {relative_path}")
+    classes_path = (relative_roots["dataset_jacky"] / "classes.txt").as_posix()
+    if payload.get("class_sha256") != source_hashes.get(classes_path):
+        raise ExpertDataContractError("Jacky class hash does not match the transfer source record")
+
+    membership = {
+        name: [{key: row[key] for key in ("dataset", "source_group", "tile")} for row in rows]
+        for name, rows in rows_by_partition.items()
+    }
+    if _canonical_hash(membership) != payload.get("split_sha256"):
+        raise ExpertDataContractError("transfer split membership hash mismatch")
+    adopted_content = [
+        {key: row[key] for key in ("dataset", "source_group", "tile", "image_sha256", "mask_sha256")}
+        for name in PARTITIONS
+        for row in rows_by_partition[name]
+    ]
+    if _canonical_hash(adopted_content) != payload.get("adopted_dataset_sha256"):
+        raise ExpertDataContractError("transfer adopted dataset hash mismatch")
+    inventory_content = sorted(
+        adopted_content,
+        key=lambda row: (row["dataset"], row["source_group"], row["tile"]),
+    )
+    if _canonical_hash(inventory_content) != payload.get("dataset_sha256"):
+        raise ExpertDataContractError("transfer dataset inventory hash mismatch")
+    test_membership = [
+        {key: row[key] for key in ("dataset", "source_group", "tile", "image_sha256", "mask_sha256")}
+        for row in rows_by_partition["test"]
+    ]
+    if _canonical_hash(test_membership) != payload.get("test_membership_sha256"):
+        raise ExpertDataContractError("transfer test membership hash mismatch")
+    if _canonical_hash([]) != payload.get("exclusion_sha256"):
+        raise ExpertDataContractError("transfer manifests may not declare excluded rows")
+
+    positive_pixels: dict[str, int] = {}
+    raw_ids = EXPERT_RAW_IDS[expert]
+    for name, rows in rows_by_partition.items():
+        total = 0
+        for row in rows:
+            with Image.open(row["mask"]) as mask_file:
+                mask = torch.from_numpy(np.asarray(mask_file, dtype=np.uint8).copy())
+            target = make_expert_target(mask, raw_ids, row["mask_encoding"])
+            total += int((target == 1).sum())
+        if total == 0:
+            raise ExpertDataContractError(f"{expert} has no positive pixels in {name}")
+        positive_pixels[name] = total
+    return ExpertDataPlan(
+        manifest_path=manifest_path,
+        expert=expert,
+        raw_ids=raw_ids,
+        dataset_sha256=str(payload["dataset_sha256"]),
+        adopted_dataset_sha256=str(payload["adopted_dataset_sha256"]),
+        class_sha256=str(payload["class_sha256"]),
+        split_sha256=str(payload["split_sha256"]),
+        dataset_policy={str(key): str(value) for key, value in expected_dataset_policy.items()},
+        train=rows_by_partition["training"],
+        validation=rows_by_partition["validation"],
+        test=rows_by_partition["test"],
+        partition_pixels=positive_pixels,
+    )
+
+
 def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDataPlan:
     """Load and exhaustively validate the authoritative one-fold manifest."""
 
@@ -154,6 +417,8 @@ def prepare_expert_data_plan(manifest_path: str | Path, expert: str) -> ExpertDa
         payload = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ExpertDataContractError(f"cannot read manifest {manifest_path}: {error}") from error
+    if payload.get("schema_version") == 8:
+        return _prepare_group_transfer_data_plan(manifest_path, expert, payload)
     if payload.get("schema_version") != 6:
         raise ExpertDataContractError("expert training requires schema_version 6 manifest")
     if payload.get("expert") != expert:

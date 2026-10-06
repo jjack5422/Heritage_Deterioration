@@ -2,7 +2,7 @@
 
 這是本次的主要操作規格：在另一台 server 下載專案，加入**新的原圖與已有人工標註**，由 AI 建立環境、轉換／切片資料，再選擇 SAM2-Adapter 或 SAM3-Adapter 訓練。不需要找回舊 Dataset115 的 transfer bundle 或切分 CSV。
 
-**狀態：已完成規劃文件，尚未實作通用新資料 importer／manifest reader。**目前 repository 的三專家入口接受綁定既有資料的 schema 7／8，不能直接讀任意新資料。本文件明確區分現在可以執行的移機／環境步驟，以及另一台 AI 須先實作的資料擴充；不把提議的 CLI 當成已存在功能。
+**狀態：已完成規劃文件，尚未實作通用新資料 importer／manifest reader。**目前 repository 的三專家入口接受綁定既有資料的 schema 6／8，不能直接讀任意新資料。本文件明確區分現在可以執行的移機／環境步驟，以及另一台 AI 須先實作的資料擴充；不把提議的 CLI 當成已存在功能。
 
 ## 1. 人員需要準備什麼
 
@@ -17,7 +17,7 @@
 
 ## 2. Server 資料目錄
 
-環境與 runtime 的移交按 [server_training_manual.md](server_training_manual.md) 第 3–5 節。不 push 時仍須移交 source overlay；不能只 clone GitHub 後開始訓練。
+環境與 runtime 按 [server_training_manual.md](server_training_manual.md) 的文件 bootstrap／安裝流程準備。初始只取得兩份文件，由 Codex 再取得必要程式與官方 upstream／weights。訓練程式與整合 runtime／reporting 仍須有可存取的 Git／release 來源；只有本機才有的未提交程式不能從文件自動下載。詳見 Server 手冊第 0–1 節，不需要操作人員初始下載整份 repo。
 
 新資料放入獨立、ignored 的 dataset roots：
 
@@ -159,7 +159,7 @@ python scripts/data/prepare_annotation_tiles.py --config PATH
 
 ### 7.2 新 manifest contract 與兩個 trainer 的資料入口
 
-先以 repo 實際狀態確認未用的 schema version；建議新增整數 schema 9 與 contract ID `portable_annotation_tiles_v1`。**不得把新資料偽裝成舊 schema 7／8，也不得取消舊 validator。**
+先以 repo 實際狀態確認未用的 schema version；建議新增整數 schema 9 與 contract ID `portable_annotation_tiles_v1`。**不得把新資料偽裝成舊 schema 6／8，也不得取消舊 validator。**
 
 新 JSON 每個 expert 一份，至少包含：
 
@@ -173,7 +173,7 @@ python scripts/data/prepare_annotation_tiles.py --config PATH
 
 擴充位置與限制：
 
-1. `sam3_adapter/expert_training_data.py`：新增 contract 分支，回傳共用 `ExpertDataPlan`。重用 expert target 與 augmentation；舊 schema 7／8 仍走原檢查。
+1. `sam3_adapter/expert_training_data.py`：新增 contract 分支，回傳共用 `ExpertDataPlan`。重用 expert target 與 augmentation；舊 schema 6／8 仍走原檢查。
 2. `sam2_adapter/expert_training_data.py`：新增 portable plan 分支，從同一 manifest 取得 partitions；不使用歷史 Dataset115 group/count 常數重切新資料。
 3. `sam3_adapter/train.py`、`sam2_adapter/train_experts.py`：沿用目前的 `--manifest`、data-only、smoke、模型、loss、checkpoint selection、reporting；讓新資料 metadata／selection_scope 表示真實 dataset policy，移除僅在新 contract 下錯誤宣稱 Jacky／Dataset115 的文字。
 4. 不因接新資料改模型／loss／threshold／epochs contract。SAM2 沿用固定 50 epochs 與 expert batch 組合；SAM3 沿用 effective batch=4 的限制。
@@ -201,9 +201,9 @@ export MANIFEST_DIR=_data/processed/heritage_new_annotations/manifests
   --validate-data-only
 ```
 
-上面命令的 CLI 已存在，**新 manifest 支援須先完成**。對所選 experts 都做 data-only；再依 [server_training_manual.md](server_training_manual.md) 第 7 節做真實 GPU smoke，使用所選 expert 的正確 batch／accumulation。
+上面命令的 CLI 已存在，**新 manifest 支援須先完成**。對所選 experts 都做 data-only；再依 [server_training_manual.md](server_training_manual.md) 第 8 節做真實 GPU smoke，使用所選 expert 的正確 batch／accumulation。
 
-成功後用第 8 節的命令格式、**新資料自己的** manifest directory 和新 experiment ID 訓練，不能沿用 `expanded_group_split` 作新資料名稱。最後按第 9 節交付輸出；所有 validation 四格圖與 Best／Worst、loss curve、TensorBoard PNG／CSV／JSON／HTML 是完成條件。
+成功後用 Server 手冊第 9 節的命令格式、**新資料自己的** manifest directory 和新 experiment ID 訓練，不能沿用 `expanded_group_split` 作新資料名稱。最後按該手冊第 10 節交付輸出；所有 validation 四格圖與 Best／Worst、loss curve、TensorBoard PNG／CSV／JSON／HTML 是完成條件。
 
 ## 8. 貼給另一台 Server AI 的完整工作指令
 
@@ -232,7 +232,7 @@ mapping、標註完整性、source identity 不明時詢問缺少的具體資料
 如果資訊足夠，依文件預設 512 non-overlap tiles、image reflect/edge padding、GT ignore=255、
 seed42 的 group-level 70/15/15 split，保存 config 與 hashes。
 先實作 inspect/dry-run，再正式轉換；人工檢視代表性原圖與切片 GT，核對整份資料。
-新 contract 不要冒用舊 schema 7/8；保留舊 validator，不改 count 常數硬套新資料。
+新 contract 不要冒用舊 schema 6/8；保留舊 validator，不改 count 常數硬套新資料。
 沿用模型、loss、checkpoint validation-only selection、固定 threshold 與 reporting。
 預先確認 reporting skill 在目前 HOME；不得等跑完 epochs 才發現匯出 scripts 缺失。
 所有所選 expert 的 data-only 與 GPU smoke 都成功才啟動正式訓練；失敗時留下精確紀錄。

@@ -1,0 +1,1916 @@
+{
+  "schema_version": 1,
+  "upstream_revisions": {
+    "sam2": "2b90b9f5ceec907a1c18123530e92e794ad901a4",
+    "sam3": "660a5e9e1b8b4c02c0ad97229b88a09a6e4ff5b7"
+  },
+  "archives": {
+    "sam3_adapter_runtime.tar.gz": {
+      "sha256": "be5dccaf81fea1480508dccc5031f0fec4f8eabe04b637529a60511c9e235720",
+      "bytes": 2120489,
+      "files": [
+        {
+          "path": "vendor_upstream_runtime/LICENSE",
+          "sha256": "1942fd04e842884751f246736a708c330401583fcb5280a0e76f08d45df51f85",
+          "bytes": 1090
+        },
+        {
+          "path": "vendor_upstream_runtime/README.md",
+          "sha256": "d707b7440c7db55ef26959e93b7c264a180afd5ffb0e833c49acd7fb2c2588dd",
+          "bytes": 3386
+        },
+        {
+          "path": "vendor_upstream_runtime/__init__.py",
+          "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "bytes": 0
+        },
+        {
+          "path": "vendor_upstream_runtime/configs/cod-sam-vit-b.yaml",
+          "sha256": "e81cedb771115d1f1d1e9a6bed326cadc1112e0cd85325d14ad9e02b0ea548ee",
+          "bytes": 2244
+        },
+        {
+          "path": "vendor_upstream_runtime/configs/cod-sam-vit-h.yaml",
+          "sha256": "39f31d2ced68b76670dea66c43bf12028e11517174f448553a5e107f59974d78",
+          "bytes": 2112
+        },
+        {
+          "path": "vendor_upstream_runtime/configs/cod-sam-vit-l.yaml",
+          "sha256": "aae0a1bea70a177dcaad0b29060a4e371ab121b6acca2b09a1ae98e423e701ee",
+          "bytes": 2466
+        },
+        {
+          "path": "vendor_upstream_runtime/configs/cod-sam-vit-l_all.yaml",
+          "sha256": "547585e4223d2f66ad211cdaa59f6b94b5cbebb931c4931e6df7144db7f19755",
+          "bytes": 2737
+        },
+        {
+          "path": "vendor_upstream_runtime/configs/demo.yaml",
+          "sha256": "6b5c25ddf0d216ec6c425c9b88c8c0c93105717d6bdc2940b7e709755e476063",
+          "bytes": 2531
+        },
+        {
+          "path": "vendor_upstream_runtime/datasets/__init__.py",
+          "sha256": "98c2d235a3fc0aa35dd621f20d29724fce82182377a8abdd026314a10d963916",
+          "bytes": 90
+        },
+        {
+          "path": "vendor_upstream_runtime/datasets/datasets.py",
+          "sha256": "0d0570d34d02d989213118bf4ea485b5cb439439336f05cc967b8124a5ecd2e3",
+          "bytes": 453
+        },
+        {
+          "path": "vendor_upstream_runtime/datasets/image_folder.py",
+          "sha256": "7ccd793a09348eb578a767acebec0c739c75e9055ecc747d45417999fec78ea1",
+          "bytes": 2701
+        },
+        {
+          "path": "vendor_upstream_runtime/datasets/transform_custom.py",
+          "sha256": "5f38ef96758c7f4313dba9e0256b6d37db2127c93d3d2da5592c0b988bb75e55",
+          "bytes": 5237
+        },
+        {
+          "path": "vendor_upstream_runtime/datasets/wrappers.py",
+          "sha256": "73991007aeed2fb7f36cead3c022684e066a34374bd06c6993eadf1d1ad984a3",
+          "bytes": 6325
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/__init__.py",
+          "sha256": "51d97e387aef6bb3cc0903b67488177034e51a9bdaf2bd53b7e20b63526a4ba5",
+          "bytes": 926
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/apis/__init__.py",
+          "sha256": "6af8a790bee963543f89be15c573514288b947fe181523a352f0464fe63f1782",
+          "bytes": 390
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/apis/inference.py",
+          "sha256": "1634e718f2f96565b6c981c48b7a6aadf0ca8775e7af3c3f92cf88ba66a69757",
+          "bytes": 4137
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/apis/test.py",
+          "sha256": "cefb707f8ce6d9ce4377284e001f25bdd71d171db29abfb6140ce9155736beb7",
+          "bytes": 8328
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/apis/train.py",
+          "sha256": "12c08281eb6ca01ad3786dcf5c4fdcecf296d52d7dddb0df28d43cc249ed0dbf",
+          "bytes": 4031
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/__init__.py",
+          "sha256": "b571bbe03255fd2fff63e727a401d21e903042fb547ad70bb8dcc971fe0bac47",
+          "bytes": 129
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/evaluation/__init__.py",
+          "sha256": "6d67c59f272cb2c261ddabc9f98a8c7c62e5f104dc2203598cc815fa9f241d9b",
+          "bytes": 281
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/evaluation/class_names.py",
+          "sha256": "dfb3a6350f3c730375553cce56fe705d5060786827451db23174e4cf74702e02",
+          "bytes": 7429
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/evaluation/eval_hooks.py",
+          "sha256": "7ca10ff7762671909a7bffdf255309a7b2f9f886b54a7a9e5ac53bfb36daa3ff",
+          "bytes": 3965
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/evaluation/metrics.py",
+          "sha256": "6c54d48bb975d35d673d63471892057e5f9904715823614e05e6e9e6f90765bb",
+          "bytes": 9457
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/seg/__init__.py",
+          "sha256": "e1c48c98450ebbc7ac327fdbfd74c3452375363af094b9c85c415bd912a4502c",
+          "bytes": 176
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/seg/builder.py",
+          "sha256": "a944a276facac350e88bfaa008ae521f74a89b8119489b8f26f0180dc6a6cbac",
+          "bytes": 261
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/seg/sampler/__init__.py",
+          "sha256": "df727a200f4401c2945341c41326e93a41bdabb3c16742c55003fc4da31efd7c",
+          "bytes": 154
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/seg/sampler/base_pixel_sampler.py",
+          "sha256": "16784218503c6d41b44c337c4bb6f020188eabaa8097701f6951c78c6b693e30",
+          "bytes": 310
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/seg/sampler/ohem_pixel_sampler.py",
+          "sha256": "265fabd165d3f2508416468f4d226c0e3d8816d96f4cdb0cca085686e6592ab9",
+          "bytes": 3231
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/utils/__init__.py",
+          "sha256": "760d75e59a77ca15f5543bec098da6da66f26571a461cd13b6049a50a766a63f",
+          "bytes": 58
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/core/utils/misc.py",
+          "sha256": "e2d91d50958e01442203cdec550c0dbb182b7920e398438a8ee0db23521b23af",
+          "bytes": 388
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/__init__.py",
+          "sha256": "21926100803a7eca6b371b98c41f42f2151a044be9af3560b56af9bcc1229f84",
+          "bytes": 870
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/ade.py",
+          "sha256": "8d81f7e5996c02db51fba18c30c75eadf2165f85bc83cecf4d002f71e01972e2",
+          "bytes": 5269
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/builder.py",
+          "sha256": "4a39e09dd8ac3941e3d1a7b1983af65fcdaa313e6fdddb52d3e4577d2e385637",
+          "bytes": 6040
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/chase_db1.py",
+          "sha256": "1a52ef5cc92de3fe0719edb2341eb12415cde7e3267475250250c656abd1e67a",
+          "bytes": 808
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/cityscapes.py",
+          "sha256": "08c0f5053d8d411ad9a3f43d63fbaa2999fe5359eba4d140673dba7b36bc7cc7",
+          "bytes": 8663
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/cocostuff.py",
+          "sha256": "94e97b85188f73402425724f68c5d55196d2be7d28dad5a22bf17b9a9d9ded59",
+          "bytes": 5195
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/custom.py",
+          "sha256": "8878b91f54051ab85c00702aaf6ad8eeb4618ccf1592ee554ccd9f1bb26d1765",
+          "bytes": 14739
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/dataset_wrappers.py",
+          "sha256": "9af73f38d99c115c3b35618eae8e631c171d7d4de098debb80df1ef7c4eb007b",
+          "bytes": 1549
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/drive.py",
+          "sha256": "4e14c2a18bc7edbe2a9a3de1d07c1215bc3116db149ecddf4c9e5a51339ae674",
+          "bytes": 798
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/hrf.py",
+          "sha256": "1c6e2bf80fe4b6f7b4b4431544ab9ded3569e2abc5663c90431eba51ee197f2b",
+          "bytes": 774
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/mapillary.py",
+          "sha256": "8c2e1e0fc135fde5b3492059b2a3e977ce6f6ff16ccc49eca4a84dcd6a727187",
+          "bytes": 2790
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pascal_context.py",
+          "sha256": "fdaa88f9c937f949102ec61e710f87eeeec60c92da6275c7dd218050efda79ba",
+          "bytes": 2720
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pipelines/__init__.py",
+          "sha256": "db11812b2a71dc09369434b8371026d12bfcc0ef037e8d6a6836bf23a3f329ec",
+          "bytes": 861
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pipelines/compose.py",
+          "sha256": "ebdd2df0d1f385f050d1192781bdeb485b26178401e74ca8021394ff18676e83",
+          "bytes": 1515
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pipelines/formating.py",
+          "sha256": "3dfb32b1a2229002914784735aa4b9f38d95996b84b7e53294c306aeb07b5c1d",
+          "bytes": 9516
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pipelines/loading.py",
+          "sha256": "aecfe022e25d821d4bddbd64163a12071ccbf8ee872cdd132fe3c16dfdc28608",
+          "bytes": 6026
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pipelines/test_time_aug.py",
+          "sha256": "6a12bcf218012111d8417ee32bec50fba5b2722b38446956a79449827f75b560",
+          "bytes": 5306
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/pipelines/transforms.py",
+          "sha256": "b72ad318ad8c16420e786be77249c76ca60f2687ea5778f337b84fe05279f05c",
+          "bytes": 44417
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/stare.py",
+          "sha256": "3c61270947aa762164afe95dbb96729d2a11033a5197337bd5db4e3bb5b699c0",
+          "bytes": 788
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/datasets/voc.py",
+          "sha256": "aec403a76e712f1ebac11a319750dcc021be105abec22c9109580869878ffc63",
+          "bytes": 1159
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/__init__.py",
+          "sha256": "54edfe87ded7a536199466649c768c9dee3c6fc51875696b9ab0436ce204e8c8",
+          "bytes": 113
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/builder.py",
+          "sha256": "0e649995b8862d3208786172fda4d957ce11c78fa1db827e8026636f78340921",
+          "bytes": 1979
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/losses/__init__.py",
+          "sha256": "c187a911efd716a3bb51dc0efd32a4fd7b3e04759f1f8eca6225cfd69effcc0c",
+          "bytes": 496
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/losses/accuracy.py",
+          "sha256": "1a0bf6eb76b0a41000a004853a2ed2343319d26843517ef94cd3413f0c6cd659",
+          "bytes": 3045
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/losses/cross_entropy_loss.py",
+          "sha256": "401e5f8c21c048046e66a9cb7d9d9cf12d88c23d332c3c4c3e691db6479c8744",
+          "bytes": 7552
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/losses/lovasz_loss.py",
+          "sha256": "baf12cc38c00c5a6ff6a904bc9d6e373eb774df74373c85c7ca348d7d1b37502",
+          "bytes": 11616
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/losses/utils.py",
+          "sha256": "dfd1f033d162a5c7928afb33399254a91e63121d99976b2b5b4a77da43bdf27b",
+          "bytes": 3248
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/__init__.py",
+          "sha256": "7704ab74fd21b7c453d753c67df61c684c2bb169ad913b20500de510fc479331",
+          "bytes": 396
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/common.py",
+          "sha256": "6b83de4e528dbb63e457ecd37c441977c3776b6c0670634423c14e410cf82c4e",
+          "bytes": 1522
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/image_encoder.py",
+          "sha256": "afab6dee5f283a42ede11c8663309f9ba5097a78e0d31efc525330aca4db0a9f",
+          "bytes": 25146
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/mask_decoder.py",
+          "sha256": "c392dcf226536c85d5e59aa0a7b56565f25d0fd3c0b5996befd260bd3bf7889b",
+          "bytes": 13917
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/prompt_encoder.py",
+          "sha256": "74a112e0fd380ebf2ed9e787149ba48d9fa2b4caa73a4f1143f135d14db0e251",
+          "bytes": 8808
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/sam.py",
+          "sha256": "cca5914776caef007097751cd1fc6eea050f8dc3bebee06cb9d744f3801100c8",
+          "bytes": 7400
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/sam/transformer.py",
+          "sha256": "be3964bd4c6d2e53de2c323b3fd1b33549cfe7d21acef20c9c980c3025f4ea00",
+          "bytes": 8637
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/__init__.py",
+          "sha256": "0593ae7123cc8209a2f8eb910023dfed08fb750377d29493de98a9a5da0f8582",
+          "bytes": 376
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/drop.py",
+          "sha256": "de14866c3132d19c4ff99700b7f51a1479a1d8e96111c0a277149d49aeaaaa33",
+          "bytes": 7088
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/inverted_residual.py",
+          "sha256": "c292f04737a549d4d229aa08f6e9b0857f1cfc0d4c8bf506a23f367573ca441b",
+          "bytes": 7218
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/make_divisible.py",
+          "sha256": "fb14e05b2ff7127aef18cb690250a9e58a70ea973703e06500508a4d9eaf31bf",
+          "bytes": 1258
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/norm.py",
+          "sha256": "96436064d1bb26eead34b83bc318a9540efa04ab643722cf53f72ccdebadcb3e",
+          "bytes": 2417
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/res_layer.py",
+          "sha256": "8f3979d6f16be1fb84331eff9fb6e305473a3716794f800b1e6284401ccc415d",
+          "bytes": 3409
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/se_layer.py",
+          "sha256": "14ba6b1820c9a25e1950a0b231ffee08bd58088f6eb124053620e1a67edf0402",
+          "bytes": 2166
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/self_attention_block.py",
+          "sha256": "0f4a992e8507f7723b00e6619414d34ba4c69723b8753596b33e367572dc7ed1",
+          "bytes": 6284
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/models/utils/up_conv_block.py",
+          "sha256": "a64f48ad50efa008132c3a780597da55d7d7e17ae98b1907e3799db568c6822d",
+          "bytes": 4068
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/ops/__init__.py",
+          "sha256": "77e0fa6495af2d761f0619a62f2bd6e1091c569e37250e2dc25da7390ae8f025",
+          "bytes": 120
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/ops/encoding.py",
+          "sha256": "0c0826996d5ab10a25ba44b128a6cdefe6242b92224733b6f7cd76a2bb877720",
+          "bytes": 2864
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/ops/wrappers.py",
+          "sha256": "46694172142773cd663ed73fc609649cd0717455babf7a04ff41d80b1e873ea4",
+          "bytes": 1973
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/utils/__init__.py",
+          "sha256": "bb28368579ec8a8936085bb312e2f473f19662867fa0ec775f05632c2ce3570c",
+          "bytes": 147
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/utils/collect_env.py",
+          "sha256": "315d656029960e4fe5236591c2c2672f97b8bf4a977ae85e1da4ce95dd6e20eb",
+          "bytes": 453
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/utils/logger.py",
+          "sha256": "8703d8ca230246fad078373707c53ca27001a2755279a55a03d55073f4be2d45",
+          "bytes": 1907
+        },
+        {
+          "path": "vendor_upstream_runtime/mmseg/version.py",
+          "sha256": "d26801790df66818f88ed1315839b9be62b5044eedc5b90256ae58e00af79abd",
+          "bytes": 520
+        },
+        {
+          "path": "vendor_upstream_runtime/models/CODE_OF_CONDUCT.md",
+          "sha256": "aa521dfb2da67e77b0720ac7b86049fe4f0165e1474f871c10e575a11f72c30d",
+          "bytes": 3617
+        },
+        {
+          "path": "vendor_upstream_runtime/models/CONTRIBUTING.md",
+          "sha256": "b8ab721ca61a5bbc8424766975d0f5b00e068e4a84252a2382da6c028b475f4f",
+          "bytes": 1240
+        },
+        {
+          "path": "vendor_upstream_runtime/models/LICENSE",
+          "sha256": "67f67e15efa517e0f67f59ff2d2f603a624da5d2f5458b0c5b366ccd66bb3eea",
+          "bytes": 7414
+        },
+        {
+          "path": "vendor_upstream_runtime/models/MANIFEST.in",
+          "sha256": "66eaa74a4c4829b69d5c70721d4007840a816eaf59df7d3c64a147e9dcc62967",
+          "bytes": 168
+        },
+        {
+          "path": "vendor_upstream_runtime/models/README.md",
+          "sha256": "49eeec6def6882f4aa753dfff144de1332fe992197e5666622d02d3db0b20caf",
+          "bytes": 19998
+        },
+        {
+          "path": "vendor_upstream_runtime/models/README_TRAIN.md",
+          "sha256": "05a811f82d36da2a5b261e5778bb6793e45c06c7b0f7aa611e91f048986716a4",
+          "bytes": 6991
+        },
+        {
+          "path": "vendor_upstream_runtime/models/__init__.py",
+          "sha256": "9f6dfdcc5a2196e3d690a7af6c66ed7d71260d1ee61d45cef2cd9a865042c853",
+          "bytes": 57
+        },
+        {
+          "path": "vendor_upstream_runtime/models/block.py",
+          "sha256": "b450392767b1fe504ccf06644130b776ca6d3c07c8a30afe0864beda3e6b5de8",
+          "bytes": 4083
+        },
+        {
+          "path": "vendor_upstream_runtime/models/bn_helper.py",
+          "sha256": "e17a6333625c021313a03d13d0d9522b7dd64eefb756de3c0d0bf560b8d50a1c",
+          "bytes": 466
+        },
+        {
+          "path": "vendor_upstream_runtime/models/iou_loss.py",
+          "sha256": "b84393503a75915153215053d8c283b3898d817a577c8e61dc1d7c320dec9a89",
+          "bytes": 693
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/__init__.py",
+          "sha256": "1b6a56094c242e3673a9850faa93dd105fe33b96e8c97bee299faddd91c3b4b0",
+          "bytes": 78
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/apis/__init__.py",
+          "sha256": "37e62415e76a3606212fab2359024f2bc4c27f728536564074b4bc68e01aa1ab",
+          "bytes": 381
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/apis/inference.py",
+          "sha256": "36f9ba3ec33371f333fd93756dbae051ab4a19f9d215b2129763126be434b315",
+          "bytes": 4019
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/apis/test.py",
+          "sha256": "dd3262e98933de7ee6010905572966e8e85af4614d06dd11cc065af54b1fda5a",
+          "bytes": 8093
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/apis/train.py",
+          "sha256": "762942a9ba9288989ed7a410e3257c2c22c29c5d7b67169aa2f5d39977c03d6f",
+          "bytes": 3917
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/__init__.py",
+          "sha256": "21830ac79ab7a309a21d0baea62ad847584e6a745e59b49939c4575b894487bb",
+          "bytes": 126
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/evaluation/__init__.py",
+          "sha256": "6fbdd4076599d7437adcb177675ff15557b66d75ab3ede7c9832ea16d0994db6",
+          "bytes": 273
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/evaluation/class_names.py",
+          "sha256": "463b6f3d2716bae6f920aa6dc5ee140850f69c341e2d95725b4c28a1179c7da9",
+          "bytes": 7277
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/evaluation/eval_hooks.py",
+          "sha256": "1021e31e680ba1d928bb8b26e1d27b9972e0299a83f5ecd7eac95b7d394c0c64",
+          "bytes": 3858
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/evaluation/metrics.py",
+          "sha256": "77bac52594dd405162715bfac08d6bd508165b087f9864c2ff91a973f0428f42",
+          "bytes": 9228
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/seg/__init__.py",
+          "sha256": "775d8a92a7a785744411d23d7a78583b22ff02700628c880860615c81031b520",
+          "bytes": 172
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/seg/builder.py",
+          "sha256": "dab0e54633e0ef13098dd1f79e2cc8b54371ad7faf0d9587140e8824aaad126f",
+          "bytes": 253
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/seg/sampler/__init__.py",
+          "sha256": "8125d6cab75608a68191685d6201671836221f17f5447a3e2fe12e59d6a97b7d",
+          "bytes": 150
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/seg/sampler/base_pixel_sampler.py",
+          "sha256": "8e3dc2eaa412393fb1347799f826b423831df5eb3ee5766310ea513777db5df8",
+          "bytes": 297
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/seg/sampler/ohem_pixel_sampler.py",
+          "sha256": "965e5ab0129e733b85e721e662f339ca64eb6a34cf347913aefcc031661630dc",
+          "bytes": 3155
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/utils/__init__.py",
+          "sha256": "c8ccca2c96e2558550728d6c6d6c28f6e83232342bac8371df4f4885a8992e38",
+          "bytes": 55
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/core/utils/misc.py",
+          "sha256": "5f58cc5da71ab2e91ac20c018505fc2914ae63df600b73b6db667b01131ca0d4",
+          "bytes": 371
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/__init__.py",
+          "sha256": "64c3c00ced7b85b9491a5dcd87c9617218235e04acdd688c02e2d3c18aa071f9",
+          "bytes": 850
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/ade.py",
+          "sha256": "c49b734b2764e30377ec8278fedeb8a016acac57a3c405c82db00c1adea64b4d",
+          "bytes": 5185
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/builder.py",
+          "sha256": "f8221c799cad125ed976682aec5d7a9c9bf4190669e8cd6d52952af327afd598",
+          "bytes": 5871
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/chase_db1.py",
+          "sha256": "8d21464cfa8d634129985ed26125171df28c7abea03fffaf61761cc8e183fdd6",
+          "bytes": 781
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/cityscapes.py",
+          "sha256": "0c181ff6c0156e1ec6bc24aa78593929e10caba775d6d57a9c2dde447fbdc96f",
+          "bytes": 8446
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/cocostuff.py",
+          "sha256": "4bf918c472cf5949369857901ad00d21046cad50f9fe26fb42e20a5ff21791a0",
+          "bytes": 4992
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/custom.py",
+          "sha256": "7c3ba1bcf7092ac517b5d4bd92f54cb88eed3f8f1df62ca9a1758edafa2d2bd9",
+          "bytes": 14359
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/dataset_wrappers.py",
+          "sha256": "02623e43f127a413c7975d252ffc7254b1cc4918233f4143abf2833a9741afce",
+          "bytes": 1499
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/drive.py",
+          "sha256": "bec458d33ba51c0972e914acc6e9648c1c8dd0a1312120cd3b42b857838f9e97",
+          "bytes": 771
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/hrf.py",
+          "sha256": "78f9de587474d0dc20017e072b352d1b21925c90c5f19b5d90f744d1c7fe9d31",
+          "bytes": 747
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/mapillary.py",
+          "sha256": "973f68b3061504576fb03ab383bd6ffe408e00c2275c35080ecf8d8a7cba1ff0",
+          "bytes": 2745
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pascal_context.py",
+          "sha256": "8886e9b0e20ad6a7ccee9e3b9d7739dfa28d88a60718c8cc32837bdce8065c8e",
+          "bytes": 2666
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pipelines/__init__.py",
+          "sha256": "4d0d4c95e680cfae3d625a7d5ff951d9dc111bb198779daa7e1d4a1391b5d0f2",
+          "bytes": 845
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pipelines/compose.py",
+          "sha256": "f339a7be8a0d7565944f9c03d46893c2c67d94bd34deb0812a15452fe657da59",
+          "bytes": 1464
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pipelines/formating.py",
+          "sha256": "66da5a9b2e96daef1bd987750464279ff98345f1ea0a06672306564779969059",
+          "bytes": 9228
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pipelines/loading.py",
+          "sha256": "ab69171bb064eb961a5866f3495903c0b93b8109b64b3c4238311af46f0cc668",
+          "bytes": 5873
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pipelines/test_time_aug.py",
+          "sha256": "196219460dc011d59c4b0998936859ef2810f3ae47ed890bf031978840399785",
+          "bytes": 5173
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/pipelines/transforms.py",
+          "sha256": "6d5bf6edf3ad62fc6411857e1e3b93a7774e41e1ce36c5f30c64b62468fdf2bb",
+          "bytes": 43202
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/stare.py",
+          "sha256": "d9000fc9379890fc65f69860e074392755033f027c4c5ad57dca0252873fd43e",
+          "bytes": 761
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/datasets/voc.py",
+          "sha256": "da03d711ac42b3bd993125f55a693fa581b7fa4eed57ee6096a1049f7c1cd3b9",
+          "bytes": 1130
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/__init__.py",
+          "sha256": "05cf9e4cf41d76d5a3fbba37001c88512b8121bdcbe7faf3eb1e3347df2a5bd0",
+          "bytes": 75
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/builder.py",
+          "sha256": "1b8358ac92191aa364bbba37925da89662d9402226befde42121ba648dee8557",
+          "bytes": 1911
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/losses/__init__.py",
+          "sha256": "d0fabbab8c0c913cd93b29944f10109377c3989d76e48026fd7d5a2ced309c04",
+          "bytes": 485
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/losses/accuracy.py",
+          "sha256": "f96d03aac1ea6ad063a134c568119fc0f40c40ab5756729d18de7ffac659a442",
+          "bytes": 2967
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/losses/cross_entropy_loss.py",
+          "sha256": "f3279267f25853e5e0d0f6527169012927ec8cc768fb8115cfd2c3ae0aa800cb",
+          "bytes": 7354
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/losses/lovasz_loss.py",
+          "sha256": "44ac43c236a702a2651fddbe1cdeb3ff4bc1b092a183cc5936bab6c6a8a8980a",
+          "bytes": 11313
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/losses/utils.py",
+          "sha256": "a18d251592595d1a902dc54937ae2278da4f8f33e8fdcc8019a3759aef350897",
+          "bytes": 3147
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/__init__.py",
+          "sha256": "47f6363b86c0bfaa7a6abf723975136d17fae4a5f002d2814a5cce8834d18980",
+          "bytes": 385
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/common.py",
+          "sha256": "59a53bfa5d0a4d446df7f2bb57d2e95808b130601592b934600fb663d256ce17",
+          "bytes": 1479
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/image_encoder.py",
+          "sha256": "0f8b236f1dbaaa6f1888dc85ad42590c30d305c4770aafeed92b2055d6bacd6a",
+          "bytes": 24502
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/mask_decoder.py",
+          "sha256": "57144f261794d4f3fce3825f51a31c280755dc9cd83164fd5058c17499aaff34",
+          "bytes": 6615
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/prompt_encoder.py",
+          "sha256": "bd8f2f5903f0647f55c21c608bcbb334eec2901ebe76aa41061b1c513df4a06f",
+          "bytes": 8594
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/sam.py",
+          "sha256": "2d501173b7345f6829f745a2ade240c98026f6b3237bf6cf8e9473405e86c54e",
+          "bytes": 7226
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/sam/transformer.py",
+          "sha256": "566a8f6db8b608398de939548bd0f485b21752fda2bdda36900e6444ef938d11",
+          "bytes": 8397
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/__init__.py",
+          "sha256": "14cbec43b3fe256f7efa9b17eb37d8ebb6a918498ee6de875244362f7de9339f",
+          "bytes": 366
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/drop.py",
+          "sha256": "515c3f23273cfd2c4f0b4dde9eb952b52b224c9629acde391d6e875b0596accb",
+          "bytes": 6929
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/inverted_residual.py",
+          "sha256": "f78a3731041b9d77a400650fd0fe9fd8d8dd6691a8250db3c95ad1654f30950c",
+          "bytes": 7010
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/make_divisible.py",
+          "sha256": "a938c6f92f118014c2a82fa396645809be96f10e48e837f8e74a8f1661fe16c3",
+          "bytes": 1231
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/norm.py",
+          "sha256": "7123469c03fe3470a6495b24a3a46697a3dae9fd84f1c791c7d7d0ea0ac3454e",
+          "bytes": 2358
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/res_layer.py",
+          "sha256": "5fa08a4a1b85db84c4e12fc4164650cd67e79132d91dd04c1dd34919752a37e2",
+          "bytes": 3315
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/se_layer.py",
+          "sha256": "e44889b3b6e05c11c761b36d0abdb243b1c10f7063524675be9c0fa045ce6839",
+          "bytes": 2109
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/self_attention_block.py",
+          "sha256": "5b28f2865a28e1a7feae04321ee1f97140af792ae91f993987c4405de8a04a0c",
+          "bytes": 6125
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/models/utils/up_conv_block.py",
+          "sha256": "4999db3f89070d83486dab855b001a59f1f41a3ee6615e72e9bed40f9442a91e",
+          "bytes": 3967
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/ops/__init__.py",
+          "sha256": "e4ac25aae315cc870c7985e414e4d0ca898d205957f49b8b99f792b155639670",
+          "bytes": 116
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/ops/encoding.py",
+          "sha256": "0af5240d8397755419c1338ec3aadf1ea2a8a5e75e55a5acd72cd70d90bd327c",
+          "bytes": 2790
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/ops/wrappers.py",
+          "sha256": "5bd7502c1f2e02e4191cebbf81b618dac218623ff55a2ca739d3042c96c923e2",
+          "bytes": 1920
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/utils/__init__.py",
+          "sha256": "cea926c814ec213403539370c496776a5b9d19777deb8aefc7becccafae65728",
+          "bytes": 143
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/utils/collect_env.py",
+          "sha256": "8aabf0bcfef259af125448e745540518060bc58f51e2c30def365de61200abb7",
+          "bytes": 436
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/utils/logger.py",
+          "sha256": "b87bd2d1c4ce222cabe591a22d115cc87cd9fe52cf54e280518c2259198faf8c",
+          "bytes": 1857
+        },
+        {
+          "path": "vendor_upstream_runtime/models/mmseg/version.py",
+          "sha256": "f594f21ae6417fd1659a9c410c788d49aa4037f884ef717dc76cabdb7c219a1b",
+          "bytes": 502
+        },
+        {
+          "path": "vendor_upstream_runtime/models/model_builder.py",
+          "sha256": "d4142abd80c7a060f4222e344c40d16ea1db263219034bb874ccd69a9069fa09",
+          "bytes": 25089
+        },
+        {
+          "path": "vendor_upstream_runtime/models/models.py",
+          "sha256": "e089d16f4bb091dbaf174676eb8adbc615d23183c7f9b4fd4f687222889716d5",
+          "bytes": 508
+        },
+        {
+          "path": "vendor_upstream_runtime/models/pyproject.toml",
+          "sha256": "ccae7b9121622e6401520ebfeb59443381080e2dab06a2892038154d5e87042a",
+          "bytes": 2793
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam.py",
+          "sha256": "26225d4a176df1cd7e6845b3d42c41323a0d51a0c888b8d265fdf644882ce935",
+          "bytes": 20154
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/__init__.py",
+          "sha256": "189685fac17e30e917f2bde535be6c2e19f03734fa78c58c04d64d6a64477310",
+          "bytes": 112
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/agent_core.py",
+          "sha256": "84ae9a07875ff3665ba522a629696a87c99662447e1233cd4d324849eb7d3d1b",
+          "bytes": 26631
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/client_llm.py",
+          "sha256": "f511dbbe11457630eb800eaef796f0fe03cff894c8ebc63a7fab6b08759110db",
+          "bytes": 7890
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/client_sam3.py",
+          "sha256": "6de7859c92a9e86ad1cf47a66b3f4d1d01916a4ad9eb2ce851fc0ef7fc73e825",
+          "bytes": 5235
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/boxes.py",
+          "sha256": "d5d9a7b05e206f70a6e9b0c066e1d79be88f4f5b0cc3a22553e9840d2d18c135",
+          "bytes": 15018
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/color_map.py",
+          "sha256": "f89fb531a2d415592b14c2e02d8f68651db1e10c263fc3d6ceb9f206a926cb38",
+          "bytes": 3780
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/keypoints.py",
+          "sha256": "62fd645d9fe2971906c3cd35d51c35085e50c322e0d8c883a10f960b9903a3aa",
+          "bytes": 9277
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/mask_overlap_removal.py",
+          "sha256": "8e8cbde4785868fac9c6c6543b0d0f32db4e0c1278c474bb6b2ff1df77cce117",
+          "bytes": 4934
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/masks.py",
+          "sha256": "ee9032fb519e1a97355316fbe2c74fd48ae9bedbdfd4ec0ffd3fe8ee071ce869",
+          "bytes": 20635
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/memory.py",
+          "sha256": "e8b63ce314edfadbdf3f30102d84b4a9f442bfdd1f70d9342dc140276df48fc6",
+          "bytes": 2715
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/rle.py",
+          "sha256": "21371c3d97445d69537415c794a2a3dd49f41811c7882354f1117aa2924216c5",
+          "bytes": 4351
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/roi_align.py",
+          "sha256": "5905ea7c18058d41d4f66645e867058de506230df3f69e302c244412a02eb713",
+          "bytes": 3196
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/rotated_boxes.py",
+          "sha256": "151ef1a4da577d53a5a64a87ed3e21852f57103216f2b07956739dddd2f0d6f4",
+          "bytes": 20281
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/som_utils.py",
+          "sha256": "3a7036d412e8cf855d1676bb3d5d08d211e5c0b05449f293ec9939c8236d2968",
+          "bytes": 12412
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/visualizer.py",
+          "sha256": "cc5996a3b7ba50264390bb2fd77022e7b27fc8add2009acc20bee8a2476fb73c",
+          "bytes": 64906
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/helpers/zoom_in.py",
+          "sha256": "05ee7df59a069803dff777abe2729a398f44ff7ef43254e78b4def90fd4b8b7e",
+          "bytes": 6677
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/inference.py",
+          "sha256": "41c62872a6664911491bfa7d328847e5581afc8573838d91c65203141c831dc6",
+          "bytes": 2301
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/system_prompts/system_prompt.txt",
+          "sha256": "05beeb1d23a58db50d5bcd90fe4ae53ed226ecbf418635e2717e79201f112ca8",
+          "bytes": 66292
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/system_prompts/system_prompt_iterative_checking.txt",
+          "sha256": "8e6f781b49a0dccf7c48bd3474aea33572c71884c493f94b3eef640059371f55",
+          "bytes": 5877
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/agent/viz.py",
+          "sha256": "27427c06accc770df43099738852a312917a2ba8043af5ccb99521bb5bd1f2e6",
+          "bytes": 4056
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/build_sam3.py",
+          "sha256": "13b987dcafd6f9f5eec556cadaacc516eadda5abb18bebc156b0825f9a457c8b",
+          "bytes": 1138
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/cgf1_eval.py",
+          "sha256": "bb3a7aba7e0150a9aceb493a3f0a5651ec87981280872a3218cc6671897e11e2",
+          "bytes": 26948
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/coco_eval.py",
+          "sha256": "2d774989b1c4b1973172b0e348db07c2787509f8abb12da4c04e0cf22a0932ef",
+          "bytes": 37159
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/coco_eval_offline.py",
+          "sha256": "bad79391900e259a42ecca2918041e6dac3ccff12566ca5829043b7ef7669ef0",
+          "bytes": 6264
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/coco_reindex.py",
+          "sha256": "0d0a2356cc42ff6853f7f8cb992b07e7c6309c816e02524626fe415e168509a2",
+          "bytes": 8341
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/coco_writer.py",
+          "sha256": "8b9647cce8013194a093e4c93a389947c38464e692284aec892ad166369d11af",
+          "bytes": 12197
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/conversion_util.py",
+          "sha256": "956f2b666571417703ed10303f288481037dc366bd606079a54da2bc5f7fc191",
+          "bytes": 7365
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/demo_eval.py",
+          "sha256": "2971c6146661a6eaf2ea4760159f6fef3bc5c83a7da3e15b9b387adf8e2621e2",
+          "bytes": 25748
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/__init__.py",
+          "sha256": "ad102ca15cd43bb40a6313db2a0cc2a1cf080715eaf4b75aabed7e39921f37b2",
+          "bytes": 16
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/run_ytvis_eval.py",
+          "sha256": "d0b4fcaa73b9387bcad692106013501122dda1cb89d73c36b639748e33d4d676",
+          "bytes": 5131
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/__init__.py",
+          "sha256": "265c117eac95199f77c06a32041647e43e4978025d7db11227bc5f6a5219d785",
+          "bytes": 87
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/_timing.py",
+          "sha256": "000e54a53b29616058aa5ea05baf429a38cb6ae41347213ecb65a35627b11256",
+          "bytes": 2412
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/datasets/__init__.py",
+          "sha256": "2f18900a9bd831c8067cf6878961b1ac2b05da227e4768d63d391565541b999a",
+          "bytes": 83
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/datasets/_base_dataset.py",
+          "sha256": "bbda85ac1b9db985a69d08a1a0d9030330979c52640d14d56d9f5eadfef5d043",
+          "bytes": 18302
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/datasets/tao_ow.py",
+          "sha256": "4228adc901e7d5483c582c7d8706f268f7aeb4987cf5297c933de45f8ada0b2d",
+          "bytes": 37366
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/datasets/youtube_vis.py",
+          "sha256": "739d403bf1c0d1ac430f59b438defa3cc5c6c6ac0c7bf6113e541f0ec31757e8",
+          "bytes": 24521
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/eval.py",
+          "sha256": "acb732df79f9185cc813e350e7a8f6a3cf0c3deca9be40bd1efe511bc43eb7a4",
+          "bytes": 17404
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/metrics/__init__.py",
+          "sha256": "d41f8abeec786e7b33dc2cfa4de81fd2cff0174c3803b9bb862f2d946a402b80",
+          "bytes": 68
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/metrics/_base_metric.py",
+          "sha256": "2abb0b69217865459143bc412f322c33c6003723a81f7340ff59ab3b95469302",
+          "bytes": 5385
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/metrics/count.py",
+          "sha256": "0bc967f6ac0ae364ab11fca9378639353ab6a436446384d1bc1a390a35f805f0",
+          "bytes": 1659
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/metrics/hota.py",
+          "sha256": "24deb2239f313318cdd6cf812d7c01abda3857f7d04b15e54ffc4b493ac006d5",
+          "bytes": 12137
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/hota_eval_toolkit/trackeval/utils.py",
+          "sha256": "a1e08773dea32f9dc954bb2ff5b91f9da562273f51dd60b2257df3fe9d6ea0ed",
+          "bytes": 6399
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/postprocessors.py",
+          "sha256": "de9ae5d68f93f7152a8cc7dd1a84c647c0ca7a71f183a54a6788e5e816c73d41",
+          "bytes": 29417
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/saco_veval_eval.py",
+          "sha256": "b9651559ac1668461709ed45257ed299734c091ea941d5c8862f6d50a2f23c9c",
+          "bytes": 5115
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/saco_veval_evaluators.py",
+          "sha256": "85094aeda1bbee669173acb495c9bc7c9e15695a4b0b3273fc13f232c00f75b5",
+          "bytes": 37975
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/__init__.py",
+          "sha256": "4c357f40f7c459ed6cdb0c1f74b5971c5c0819af25aa9d6fbcae675fa6a98f76",
+          "bytes": 107
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/_timing.py",
+          "sha256": "31956a138ac4cd32c966d8b89cc951a047b467611150e37888888b6f44c0ebf3",
+          "bytes": 2424
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/config.py",
+          "sha256": "85d206da479b69e6f12328b5f82fb50210fcb33f5c341e98d835e9c4704fe01a",
+          "bytes": 5812
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/datasets/__init__.py",
+          "sha256": "6d208b5f4cf58a9c32ca037f314607bb73b7dcb4b4e938f0416b7dc724ca7ca6",
+          "bytes": 91
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/datasets/_base_dataset.py",
+          "sha256": "0855732e468f539b476ff9871f6d0d89d5629f324d2b7abf2f0295d5d1d80859",
+          "bytes": 18246
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/datasets/coco.py",
+          "sha256": "2e96b466ea1a44fe6dd13c7676df27793949995b72f32fb23166a27a44a6e17b",
+          "bytes": 26004
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/datasets/tao.py",
+          "sha256": "ec29a8ab697f4f1127092197e335194a5038747254d497d8000442b8bd3c9605",
+          "bytes": 26989
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/eval.py",
+          "sha256": "15027ae0735e2cdcffccf508fc0ec7d8d767d2df9d53775fa4165a25c78b617a",
+          "bytes": 10907
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/metrics/__init__.py",
+          "sha256": "ffcdbcf47586d3a9a455dada640584d4befa3a6c3a2d57594873d2cd36107548",
+          "bytes": 54
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/metrics/_base_metric.py",
+          "sha256": "616a13575e72839efee580a1d1f2f7dbe4cdb77dfcb38b86eb0c5733c33bcef3",
+          "bytes": 5333
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/metrics/teta.py",
+          "sha256": "0c3903e441b04f4c4d3b788e3087eb5c6d6e44995ed0853e2207b8a16f1bd2da",
+          "bytes": 15993
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/teta_eval_toolkit/utils.py",
+          "sha256": "5fb85ee973d031c8f8c92af2db57a009d211e684f5c8053204b8be0ca6c2d851",
+          "bytes": 1327
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/ytvis_coco_wrapper.py",
+          "sha256": "72333f1c00f30a62960db968b833a79ec7ec4b42c13b58e6dfee56a2b1ebb8a1",
+          "bytes": 6205
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/eval/ytvis_eval.py",
+          "sha256": "2742159749ec3f044d1f7113e820ba5280ae82c7b8ac8194cb7888ea59829250",
+          "bytes": 17438
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/logger.py",
+          "sha256": "91e882475d059d14dd4a5f1a1a6de8a6fa6428144fd1d0acfb77475226ee98c3",
+          "bytes": 1874
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/act_ckpt_utils.py",
+          "sha256": "d621a5a6b4bf618608e7cd712f6757a810080a78cceda52ae6ef66a0d46730bd",
+          "bytes": 4445
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/box_ops.py",
+          "sha256": "09966f42f12ff8fc65c8da546793f1d635ae2e979d821766ce9a1ab508def374",
+          "bytes": 6206
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/data_misc.py",
+          "sha256": "94a71883a060384ae45e8d802c73c9c6c388589c919a0ffce1a66287ef40a2ff",
+          "bytes": 6559
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/decoder.py",
+          "sha256": "d66cdbafcf80c3074b0f324e498804a8c0804435847183314981ddbc98af7678",
+          "bytes": 37630
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/edt.py",
+          "sha256": "d33f5a0c0831a8689e51a48f0e54fddc394b2f48a484287734c0f45be97bd031",
+          "bytes": 8547
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/encoder.py",
+          "sha256": "b802ead0fd62adcef56a7f5f54b270a64393071bd666e3cc7ab5cea037eddba1",
+          "bytes": 23780
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/geometry_encoders.py",
+          "sha256": "f9a9a56f701742743a4ec872969472874a965ae8446e1068db9078bedbef04c0",
+          "bytes": 34435
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/io_utils.py",
+          "sha256": "8970fb0ed7e4c8c52b99fd1c7073768bc0e2f16406d4444d319a203fdd6cac1d",
+          "bytes": 27623
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/maskformer_segmentation.py",
+          "sha256": "059eb53439e4f4eaf8495e46bd03ebcbea3569b8d0ecaca538f3b5bd073a5fda",
+          "bytes": 11741
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/memory.py",
+          "sha256": "c7aecd7738b043edd9c8a7860d440c55c7e594fbe4dd4f136da1709f732b9190",
+          "bytes": 6887
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/model_misc.py",
+          "sha256": "8d474dec66da3ea30969d2ec96d3837c906997232bad0f0eee28b62dd6de1e8b",
+          "bytes": 15437
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/necks.py",
+          "sha256": "f28916fac456a4e85048cf163fb5649dc60fe3bcbc51dbe6405f7248c57e60b9",
+          "bytes": 4312
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/position_encoding.py",
+          "sha256": "483a5ad0b73bbf5515491f26cebbec2f23df3fc93fea2479aeb044c87fbb792a",
+          "bytes": 4996
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam1_task_predictor.py",
+          "sha256": "c36be934414eaee2c7d8f011c10ed791c09d4401f40d2bdf33353e77f66925d1",
+          "bytes": 20044
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_image.py",
+          "sha256": "6242d3c56b7475a09f2143ff266620d8dcc9f00304b47cf2127f5ecb2172e5de",
+          "bytes": 38415
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_image_processor.py",
+          "sha256": "d196b6070a7cc8fd45a7594377bd8137923033846ff10c625a843aa850c37949",
+          "bytes": 9139
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_tracker_base.py",
+          "sha256": "31de125d16f05432fa70f1d975406cbc8d22083cbfe1b5a0742e56fb5f66c041",
+          "bytes": 60619
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_tracker_utils.py",
+          "sha256": "1b7d5d11e484b23213760076547a71bcd7df38008bfda26fc05d6cd8b2a10671",
+          "bytes": 19021
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_tracking_predictor.py",
+          "sha256": "b00303e9a1d6eff0b3347c9eda6d07cb9d3cbe1e64090c0a7190a5443df0afba",
+          "bytes": 70258
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_video_base.py",
+          "sha256": "26ed5fa425365eada21138cf2ea0e1b266855a933db7a768e730168d8f1bbd19",
+          "bytes": 85858
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_video_inference.py",
+          "sha256": "80d80630a40f33863923e76ab93427b84496ee2d02b65863341807ea4ff943b1",
+          "bytes": 78802
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/sam3_video_predictor.py",
+          "sha256": "f1cc7d93a755f19d4c40cfe77c6dfdaf4f7fd7b4fa62ef4ad8de4f43911017dd",
+          "bytes": 22739
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/text_encoder_ve.py",
+          "sha256": "6c59723f6a774f620dffea92ac8f3b2d33a4fd6105c1b21880ebb97ef9b3bf19",
+          "bytes": 11587
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/tokenizer_ve.py",
+          "sha256": "91ed7156fddb2c4197ef03cc89c50a4338a6fa93e903849b48d4e8d1c07782e0",
+          "bytes": 9084
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/utils/__init__.py",
+          "sha256": "6af9c73e62a778c4d988319104f67d14f029bedabc94666ec56221656cbd0ce8",
+          "bytes": 222
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/utils/misc.py",
+          "sha256": "9ac1134632480ddf84c1b791f9392c3cde89645522ef71bbd70877e0bdf7eb78",
+          "bytes": 2598
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/utils/sam1_utils.py",
+          "sha256": "3398e1518eb4ccd9390743f1ad70fd7779855c45553abf9dbb48707788ebb75a",
+          "bytes": 5149
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/utils/sam2_utils.py",
+          "sha256": "3a352898bfa842e4a3ebb74f7067c7a61858bf0492640968c2371bc74658d153",
+          "bytes": 8549
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/vitdet.py",
+          "sha256": "0d49c5d25b67a24bf361f59dce9a4718b5ec3c9a9429c79ce0b6c20b53211b25",
+          "bytes": 53634
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/model/vl_combiner.py",
+          "sha256": "3610db7187d4e0c08c8420e1bdeca728c821529727e5527d6030067b82a05fbc",
+          "bytes": 6626
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/__init__.py",
+          "sha256": "3a7c0ac84b6b556b62b68e29e89550e92ba3023d7f4718467a5f40229f97901c",
+          "bytes": 228
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/associate_det_trk.py",
+          "sha256": "f05bc680fc1d516aa2cb5017127849def9ec53e96981c2dc3f5fe25db2ebc325",
+          "bytes": 5565
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/compile.py",
+          "sha256": "19d4f7c04730df0d4c9f04a8fb086453c2b56d602289b846396fa92209badc58",
+          "bytes": 3347
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/connected_components.py",
+          "sha256": "dd21833ee5e4434a72e25eaeff392d6b750110deb149a91b2399c5f3003f3bb8",
+          "bytes": 2954
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/fa3.py",
+          "sha256": "18cea76a3840aa158bc0989b1435e56e12606ae9712057b9833badd1ffd80392",
+          "bytes": 855
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/masks_ops.py",
+          "sha256": "743f89dc77f7a00bd10933054f681c42e15c56b1be6483ee4e67bc21930166ea",
+          "bytes": 2821
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/nms.py",
+          "sha256": "bc294533cc4ffb5164e144f1cd73cbb2686c5486ef6b7677ff54f7f0962404b5",
+          "bytes": 3530
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/tests/tests.py",
+          "sha256": "afcf9215931c0c52c71ebbc596bb2c98b75c3af0213efbcf92ac87b80e9d05d9",
+          "bytes": 1927
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/triton/connected_components.py",
+          "sha256": "5c71a9e35d8c8d761e2d6d778a00630598ec0614a16d2cf0ccb75be6eafbbbfe",
+          "bytes": 16391
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/perflib/triton/nms.py",
+          "sha256": "7adb448738d58ac30ae1d9e126a9825a5db05062fd486be238d79bd6adbec57c",
+          "bytes": 4841
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/sam/__init__.py",
+          "sha256": "0911a3099918893185e5cf9f9b6a3a91b64e954a5ef7a3ded5cf0d5d3b43661b",
+          "bytes": 200
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/sam/common.py",
+          "sha256": "15e8b5a8a486a83f4d7fa0da4417010d13a1a91a72066d83f410ff7a7d28fc70",
+          "bytes": 1394
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/sam/mask_decoder.py",
+          "sha256": "9c5db708675704707f1f907c34ab2707703834b1ff6fd5a01ebb9443ec45e5bb",
+          "bytes": 13728
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/sam/prompt_encoder.py",
+          "sha256": "92a28ba16c538966c0a8ea153918d89196bd47e62c9f06900c1b2db3f7475e9a",
+          "bytes": 9505
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/sam/rope.py",
+          "sha256": "682adf2dc4f9879a98cfc09fc69fba7d7d8f9b27c6b13138eb8d4e0e40182e7a",
+          "bytes": 6080
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/sam/transformer.py",
+          "sha256": "6d716e4220d553d8f05abbbc33ff9a180cacfff8794910a690d5a582011c7dfa",
+          "bytes": 13206
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/eval_base.yaml",
+          "sha256": "4829f39b7800785255e6d944b5be65403383f4fb213c65d9636658dd3812bb99",
+          "bytes": 9715
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_attributes.yaml",
+          "sha256": "4dfb99d8d07ef0c6a7dfbd2dd2997f275e3e28f07a77fb9e5050bc4e3355a3bd",
+          "bytes": 2644
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_crowded.yaml",
+          "sha256": "532b18bc3654e0a9d8583aa2e6a6baf4fa43f3a0a2d9eb97f3d38ac7dc99f409",
+          "bytes": 2620
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_fg_food.yaml",
+          "sha256": "1ee1777b7653187d26959281e9448c14ba74e221435664af658df3903a75925e",
+          "bytes": 2620
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_fg_sports.yaml",
+          "sha256": "5cf318f558fb5fe21caae5fc7e0a37cadeb5b99dca2adb01788eb2adfb811ff3",
+          "bytes": 2716
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_metaclip_nps.yaml",
+          "sha256": "e9d4c8e71c95f456b018c5e5a8c3c2a4bd407b8e3b25e9986c9637d5d37416c2",
+          "bytes": 2644
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_sa1b_nps.yaml",
+          "sha256": "90e1cb398d776fc013167d61c2230c8b5eac1b82c09828ebce72c9950feaa36a",
+          "bytes": 2608
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/gold_image_evals/sam3_gold_image_wiki_common.yaml",
+          "sha256": "afb8b11817b3844c6dfdcae978558795db402a4f4cf22467a90ec9b7f5f7bc9f",
+          "bytes": 2652
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/odinw13/odinw_text_and_visual.yaml",
+          "sha256": "022dad8702957d0f5a2c2c83f779677ac04a5e0b332ef5017e727e5801be4d9d",
+          "bytes": 9373
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/odinw13/odinw_text_only.yaml",
+          "sha256": "036c5157b1d2cc9bfecfa26cf3e4e01e9fb52732908c29a8ecf7dff852e4c714",
+          "bytes": 9172
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/odinw13/odinw_text_only_positive.yaml",
+          "sha256": "38db8cf44ea8043bee0d906a792fbb7fd3d4f4fae3145e802b85b3e90aa236c7",
+          "bytes": 9174
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/odinw13/odinw_text_only_train.yaml",
+          "sha256": "812abed2c41fecacb0725b35a1ed0f22a94d2babb906302118df9dc398e8f67d",
+          "bytes": 21587
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/odinw13/odinw_visual_only.yaml",
+          "sha256": "99b4cafe3e50d4f61a5c6e0f76f30a95df2e90695f9fd61ebaf5024c175dac9d",
+          "bytes": 9376
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/roboflow_v100/roboflow_v100_eval.yaml",
+          "sha256": "245343562ecacac647b94b105146d5d8922d891273fcbb40fd3dfd129d49d0b1",
+          "bytes": 17908
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/roboflow_v100/roboflow_v100_full_ft_100_images.yaml",
+          "sha256": "e3caa5149fbe88462136c2fd4b84d81081a0f8ce09fad7ef47e216558e4babe5",
+          "bytes": 17911
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_sav_test.yaml",
+          "sha256": "132a7d1ccd621aa3f09491bdf23c6d8423cc6302b46cd493b52e5eca265be568",
+          "bytes": 5255
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_sav_test_noheur.yaml",
+          "sha256": "024ea4b230e570540759f7def9cf050731a6a506553d767578e18b21ffe7143b",
+          "bytes": 5256
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_sav_val.yaml",
+          "sha256": "09a90d46bcdcfd92129bd648f2fdae669a9881cabb024da1384e598fd9a1db15",
+          "bytes": 5253
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_sav_val_noheur.yaml",
+          "sha256": "54487e85bba7c8962de21115a2a101fe64bf9e7059ca0117a07423aed23e0bb0",
+          "bytes": 5254
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_smartglasses_test.yaml",
+          "sha256": "ae350d4361769e3af68533f6215198a6d4800693eb2fee0d55c162c24b8198a9",
+          "bytes": 5273
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_smartglasses_test_noheur.yaml",
+          "sha256": "81b7421f52a0a2b8e862fa8780e7c69fdfcc54f7b4beca3cf4e032ac6916e3b0",
+          "bytes": 5274
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_smartglasses_val.yaml",
+          "sha256": "6f75dde770b7f31c46f5958762eec7bb477f3d28147b6fe4d9349ca6d626bc12",
+          "bytes": 5271
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_smartglasses_val_noheur.yaml",
+          "sha256": "edf8e0dfa3be07846f1c0a73224ac77a6fa19a9430128cc6fc8f6499488a51e7",
+          "bytes": 5272
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_yt1b_test.yaml",
+          "sha256": "7858c5ca2502de04b7a7ad93abd2d67f9ce8bcd6c2259555934ac072db88dffe",
+          "bytes": 5257
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_yt1b_test_noheur.yaml",
+          "sha256": "17bcd5cdf7605c912fe6743780334cf3045e35619e62cff60265acb84bc68a82",
+          "bytes": 5258
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_yt1b_val.yaml",
+          "sha256": "067c28cef79fee7d347be8a61fab37829b622fdad3a137bed1474ab88bcc3ea1",
+          "bytes": 5255
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/saco_video_evals/saco_veval_yt1b_val_noheur.yaml",
+          "sha256": "0e45541897e16383ce8ec54b04f310f0368605a52e7f5162d46e701631d6dc66",
+          "bytes": 5256
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_bdd100k.yaml",
+          "sha256": "635720c387e858e68c92cc30977ef5195d490b652761d7345a1f02772cb384e9",
+          "bytes": 2421
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_droid.yaml",
+          "sha256": "be6fe50156dfb10c7f95f22f3f9b4be7f5d20eb72e9fa6cc09551e605bddf687",
+          "bytes": 2409
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_ego4d.yaml",
+          "sha256": "a390d9e15ccf6494fd8dd0a9fbf2c48ab25e0b95eaa2030fcd1e87140e0d8fa4",
+          "bytes": 2409
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_fathomnet.yaml",
+          "sha256": "eee41d6028aed1ff533128d624991edafd4f37839c3d0f93a48c3e8473f4930c",
+          "bytes": 2426
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_food_rec.yaml",
+          "sha256": "4bf7e5a462a30583978bbb229b65cd0c5af47a146786f45b7a38b5cddfc6945b",
+          "bytes": 2427
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_geode.yaml",
+          "sha256": "e48682e84e8a67894a254d1d012fb245b3180cb0133d2ce066af23ddf28e33d2",
+          "bytes": 2409
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_inaturalist.yaml",
+          "sha256": "ef08e07ab21118d3ca299f54fbc242ba0828ef1d96f9362953e0788f62559426",
+          "bytes": 2445
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_nga.yaml",
+          "sha256": "3939d39125efa1d5cb8c127baeb5987c0bfc34e0a0207b305af28bc1d52c70e6",
+          "bytes": 2417
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_sav.yaml",
+          "sha256": "13627f51da2900f42da08a4acee032162fc1c2fa2cbb1c09c343f5d6e6bb15f3",
+          "bytes": 2397
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/configs/silver_image_evals/sam3_silver_image_yt1b.yaml",
+          "sha256": "7c9e382d80396ee1e47f30bd180c0c758a02efe549d9cb4ad9ee4dcfe615c53b",
+          "bytes": 2403
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/data/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/data/coco_json_loaders.py",
+          "sha256": "6edef9c719d5393e2d38ae4fbd83aab4aac1fbac1fdb13c96ef6eeb5cea9f573",
+          "bytes": 14936
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/data/collator.py",
+          "sha256": "0b197adfcd43c0d7596672b9ab38e3785fde99b8e1a5c81c5c34874b311237f5",
+          "bytes": 13144
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/data/sam3_image_dataset.py",
+          "sha256": "f7b40a32474796011c3bc77d8f655110a63e769c3bb2f778cf2219fcb98ba529",
+          "bytes": 20394
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/data/sam3_video_dataset.py",
+          "sha256": "976051db80b7e06f82de15d73ce560c3d253edc1b5be0e2f9e2cbc645153afd6",
+          "bytes": 16160
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/data/torch_dataset.py",
+          "sha256": "0d10bbc8e5a560d740c4ec5cf5bc3ad12daf7046420768e869d298db72462535",
+          "bytes": 1791
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/loss/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/loss/loss_fns.py",
+          "sha256": "e22abfa9ade1f7a929e16633a921c87bbb35a0f4e6aa8033771113558a7738a6",
+          "bytes": 55797
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/loss/mask_sampling.py",
+          "sha256": "b13ff1fc2ee1cf83ccdf66da64d824852f68c5dbfd22eb3e0c5392168294bf4c",
+          "bytes": 5248
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/loss/sam3_loss.py",
+          "sha256": "75a154bba82b21e2f5aff7804e4f30364df9e65de2e9c226d55b1c4fb9f401b1",
+          "bytes": 9053
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/loss/sigmoid_focal_loss.py",
+          "sha256": "b0c2eb0cad73af248baf5b856f6336631ffb44e59ea9bf2245ad8057e5a84a34",
+          "bytes": 11711
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/masks_ops.py",
+          "sha256": "dfb03671491517b9e83b421a9e7af38954593599407eeb2c979d696561955928",
+          "bytes": 9903
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/matcher.py",
+          "sha256": "231f0ec9adae634359e0199932c85d3672483e135d1e8b9c72bf467da98c3dc3",
+          "bytes": 35176
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/nms_helper.py",
+          "sha256": "49fbb207e8b99476784a2345f3be35573a2de15f768f8f1c42da30fe3c14f640",
+          "bytes": 11795
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/optim/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/optim/optimizer.py",
+          "sha256": "18fe54206a1ee6ea94377766159712b8741aaf73886ab39a1bc4aed2f2ee3131",
+          "bytes": 20235
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/optim/schedulers.py",
+          "sha256": "81ef3de959b624128b76755d24d58f4fa906d68764ce7e5c1e3ff73933ce9547",
+          "bytes": 1205
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/train.py",
+          "sha256": "af6073fc94562c603054dea7930c80fed9fcb4464256ffd07a8df76e521066df",
+          "bytes": 13324
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/trainer.py",
+          "sha256": "61e53b2774ffde300d48434feb08cb1ccf96e37bc0689523134d9ca8b1e95a0b",
+          "bytes": 46048
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/transforms/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/transforms/basic.py",
+          "sha256": "88ecf3acbd70deb190aeeb6a3bd63c5c53fc7beabf5f198b241c63e54bae8a1b",
+          "bytes": 15502
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/transforms/basic_for_api.py",
+          "sha256": "ed530201031a18285146273d81fc31850cf99a6bd6244f9dd4f70b9cf22326ab",
+          "bytes": 55192
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/transforms/filter_query_transforms.py",
+          "sha256": "fb9a9f433aa4aaee197810e29fdce53cd45a24ab563740cb461deb8cce05eadf",
+          "bytes": 23495
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/transforms/point_sampling.py",
+          "sha256": "0e45e8d14c9ba9cc006dab8a7b3e4b88485e144dbce99dd57c2daafaaf79b7ce",
+          "bytes": 13748
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/transforms/segmentation.py",
+          "sha256": "0a1da12aa8f102a854aff6b4eddad248179663390c031d6f04a9e6ce57fb2a99",
+          "bytes": 7052
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/utils/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/utils/checkpoint_utils.py",
+          "sha256": "7786dd68a4844afa5562fc2f82eacc0b76caedff363658a5cca4e0270332a980",
+          "bytes": 11962
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/utils/distributed.py",
+          "sha256": "5cab757e7acfb5f04f0a5d7310896cc7d38ec541db886820e78cfb7a15aaecb2",
+          "bytes": 19978
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/utils/logger.py",
+          "sha256": "ba7bea9172624599a1247cba45bd4de9273d4c5708764d2b2eb34e3b606a5a05",
+          "bytes": 7676
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/train/utils/train_utils.py",
+          "sha256": "d898673e52f14cfc62e49decf80391babe553a95ba63c325a459fd874a7e9531",
+          "bytes": 9031
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3/visualization_utils.py",
+          "sha256": "1a353fd97ac35a8802a0545a20af2db577c69237b1a22ed689e41509a3593509",
+          "bytes": 31407
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3.egg-info/PKG-INFO",
+          "sha256": "c85375cb5a79d6dd6026506b672c825686e8f896c33756a685f95b910f070017",
+          "bytes": 30195
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3.egg-info/SOURCES.txt",
+          "sha256": "559e98c3d55499230091461a86f00a8635427d35ef3973bd69a703ac073c2afa",
+          "bytes": 1492
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3.egg-info/dependency_links.txt",
+          "sha256": "01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+          "bytes": 1
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3.egg-info/requires.txt",
+          "sha256": "136524b5c0fa64e9b1c57c8eaf2c60961c216f71439d45a76fb8eb2fbd59e5f6",
+          "bytes": 506
+        },
+        {
+          "path": "vendor_upstream_runtime/models/sam3.egg-info/top_level.txt",
+          "sha256": "8d91ad180731ebabe4be60a98d0a50e155677c4f296844f06c3e6b1ae3a93c4d",
+          "bytes": 5
+        },
+        {
+          "path": "vendor_upstream_runtime/requirements.txt",
+          "sha256": "cc38128906fe7264fdad0c046d783ef11dcd1096243859528baba1e3d57205ea",
+          "bytes": 303
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/gold/README.md",
+          "sha256": "1295beda0fd368cc2dae09306187091aca181ef72c169ca591284c63098dcc72",
+          "bytes": 15885
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/gold/eval_sam3.py",
+          "sha256": "82aca9310e8bcad8bebcad22ef55c217357439abdc7de33191501c1d04ab2343",
+          "bytes": 3446
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/CONFIG_FRAMES.yaml",
+          "sha256": "a6a0921dd40b978645de071c52f5ea27cb89171b33fc58fa14dc0db8f13ecf8a",
+          "bytes": 905
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/README.md",
+          "sha256": "a8cd3577ae4c97e335f33e2c480cee03e32870a75fb6320ea36a449e9c571bbd",
+          "bytes": 26177
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/download_fathomnet.py",
+          "sha256": "7523a5ad0dd169e0cae3d80f922b5c56c28e430cf3d6c739bdcb6e9d7d0a5baf",
+          "bytes": 2100
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/download_inaturalist.py",
+          "sha256": "186aa3d7040296e152f0d91f6739e84c68a2c1f895908d10921ac2939b0dbe29",
+          "bytes": 2720
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/download_preprocess_nga.py",
+          "sha256": "d93d1ff07b1385de6462d37297b45d9beb0ee8d04dbe7dc27dce296f458e3f9d",
+          "bytes": 5135
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/download_videos.py",
+          "sha256": "74f060b070da87ab2cf6bca80938616ec72bd66e7e401d53ff7ecc62301620e4",
+          "bytes": 9464
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/extract_frames.py",
+          "sha256": "1fe26bf28d5bae370274e88fe131671eddfb41897942baac0b0c6cef01fb50c0",
+          "bytes": 3339
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/fathomnet_image_uuids.json",
+          "sha256": "158921ccc47fa2d6c84720816c55294b1f4df6035f5395e1d2b7aa7d8241c9ba",
+          "bytes": 396549
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/inaturalist_image_subset.json",
+          "sha256": "d32b6cad7d42684dfd994691e2555e88367946b082f406dfdf593ec367fd6bfd",
+          "bytes": 3874738
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/preprocess_silver_geode_bdd100k_food_rec.py",
+          "sha256": "45acfc0f278bfedbb7b0fe325accdc343675fa2a778a120d22755cd6ac33a820",
+          "bytes": 2818
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/silver/utils.py",
+          "sha256": "cdb17ea241cf4422d98c4c6041be99d41cfef23287803f944a3319869c8c1e24",
+          "bytes": 4187
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/standalone_cgf1.py",
+          "sha256": "4a6219db09684116acb231bfe1e3b7efaa12c33ed27722bac9c163a08a5a0672",
+          "bytes": 1455
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/veval/README.md",
+          "sha256": "6161ed0e3fef02e304df14e199504b2d3687b75c9414b071135817120dee3ac5",
+          "bytes": 11011
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/veval/__init__.py",
+          "sha256": "54a4a7020b032f3626a40dffe391a434ff265718edd446524d9801d05519cf39",
+          "bytes": 74
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/veval/saco_yt1b_annot_update.py",
+          "sha256": "e20ba0f631cc8037211600418a7785df7441baa3fdd0fed0ec58c5d81b3b4a59",
+          "bytes": 4518
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/veval/saco_yt1b_downloader.py",
+          "sha256": "cfb29da265b9ceff1cfed32b2266692ccb43737df368227a0ab9c4f6ea6068b3",
+          "bytes": 4227
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/eval/veval/saco_yt1b_frame_prep_util.py",
+          "sha256": "2debabd2cf7a5648032d365b02fa76a590bdd9852e6957836b1bf185444c8d1c",
+          "bytes": 9255
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/extract_odinw_results.py",
+          "sha256": "35e797cef98cdc9455ad189bd0e7e97848af0a5bd74e0e8b0d2fae45ac0715f5",
+          "bytes": 2826
+        },
+        {
+          "path": "vendor_upstream_runtime/scripts/extract_roboflow_vl100_results.py",
+          "sha256": "7b2430534189a05c41b841a16fc0c3a2cdd20de77ed097306e2609fe1dde4921",
+          "bytes": 11115
+        },
+        {
+          "path": "vendor_upstream_runtime/sod_metric.py",
+          "sha256": "97e6f9e1dc5753f2fc5430e54f0ef6dd072c4ed6de88da9b50c2e21f54bf4fe4",
+          "bytes": 22830
+        },
+        {
+          "path": "vendor_upstream_runtime/test.py",
+          "sha256": "f4fd9069b0d66b79d4f008ce0056bdd03d07cae5e87e956cb93e8b6e6c69404c",
+          "bytes": 7179
+        },
+        {
+          "path": "vendor_upstream_runtime/test.sh",
+          "sha256": "3557cf91914d9caa23e44d43872d54caa913992e90bd2983da8ef20bff03cdb2",
+          "bytes": 140
+        },
+        {
+          "path": "vendor_upstream_runtime/train.py",
+          "sha256": "459f23089f4667ff5c5df8d352196607690d3ae81d800fe01ec48566f1634e2c",
+          "bytes": 12995
+        },
+        {
+          "path": "vendor_upstream_runtime/train.sh",
+          "sha256": "d46aefeb43d4d945ccbd39d6253c897ea866f8086f3cdf0610d36eecf3388d97",
+          "bytes": 196
+        },
+        {
+          "path": "vendor_upstream_runtime/utils.py",
+          "sha256": "5e70bf745ceac65878d46912a514c47673f5ca64977a2d4d0309d91ea7160252",
+          "bytes": 12268
+        }
+      ]
+    },
+    "training_output_reporting.tar.gz": {
+      "sha256": "d2891117e4fe318c090a289f0a8cc8872b06e6f123d374a05eaa3c6d31ad4160",
+      "bytes": 6359,
+      "files": [
+        {
+          "path": "training-output-reporting/SKILL.md",
+          "sha256": "ca2a50f8c8bccdd16c0bdb22984d30fa832189b9fc337712bb7c166eba981574",
+          "bytes": 2002
+        },
+        {
+          "path": "training-output-reporting/agents/openai.yaml",
+          "sha256": "6efa5b65ebde7ff15a4f9e4fb591682bd491f23935d9c96d023f73e3e8dc693c",
+          "bytes": 225
+        },
+        {
+          "path": "training-output-reporting/references/run-contract.md",
+          "sha256": "97b684f5aa1ab4e160366dfd1a0ab4642c1a1147d04abf4a868fa653afef0a53",
+          "bytes": 2116
+        },
+        {
+          "path": "training-output-reporting/scripts/build_training_report.py",
+          "sha256": "26bde771628d90cf76af913ab893d3e1fada255b169f62e44c760f2a3fb81cb5",
+          "bytes": 7937
+        },
+        {
+          "path": "training-output-reporting/scripts/export_tensorboard_images.py",
+          "sha256": "705e91ffbb0c5c3990bbfbfcc9ea0ce8e03f01ec83ca8463fc1d8a6699e2109c",
+          "bytes": 2809
+        },
+        {
+          "path": "training-output-reporting/scripts/export_tensorboard_scalars.py",
+          "sha256": "a891c66f586ac9ff0278a7e870f5f34ba1127259db7ec426e9eef6e68d182706",
+          "bytes": 3087
+        }
+      ]
+    }
+  }
+}

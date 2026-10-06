@@ -1,5 +1,10 @@
 # SAM2-Adapter
 
+Clone、官方程式／權重下載、環境安裝與開始訓練請依
+[Server 操作手冊](../docs/server_training_manual.md)。整合 runtime 與 reporting
+skill 從本 repo 的 `assets/training/` 來源包安裝，不需向原工作站複製。
+
+
 This directory owns the SAM2-Adapter implementation, tests, and experiment
 artifacts. It is independent from the `sam2_sac` H0 baseline project.
 
@@ -80,3 +85,12 @@ Raw label 1 is the merged crack/craquelure foreground, raw label 0 is
 background, and other deterioration labels are excluded from this binary loss
 and scoring task.
 The historical SAC H0 code and runs remain under `sam2_sac/`.
+
+## 三個 Binary Experts
+
+入口：`python -m sam2_adapter.train_experts --expert <expert> --manifest <manifest.json>`。
+Expert 選擇 `scratch_crack`、`loss`、`shrinkage_craquelure`；固定 50 epochs，
+scratch／loss batch × accumulation 為 4×1，craquelure 為 2×2。
+先依 Server 手冊執行 `--validate-data-only` 與 `--smoke-test`。
+產物在 `sam2_adapter/runs/<experiment_id>/1fold/<expert>/fold0/`；checkpoint
+以 validation F1 選取，test 不參與選擇。可攜 schema-v8 與 SAM3 共用 reader。

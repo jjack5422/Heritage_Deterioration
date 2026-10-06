@@ -1,5 +1,19 @@
 # Jacky repository instructions
 
+## Remote server and new annotation data
+
+- For new source photos and annotations, read
+  `docs/new_data_training_workflow.md` before conversion, tiling, splitting, or
+  adapting a trainer's data contract. Read `docs/server_training_manual.md` for
+  Git clone, upstream downloads, environment setup, and output verification.
+- The existing expert manifest schemas are tied to historical datasets. Add a
+  separate validated contract for new data; preserve existing schema checks.
+- On another server, use the installed reporting skill under the current
+  user's `$HOME/.codex/skills/training-output-reporting/`; the absolute Jacky
+  path is portable across server accounts. If missing, install the full
+  skill and scripts from `assets/training/training_output_reporting.tar.gz`
+  as documented in the server manual before training.
+
 ## Python file organization
 
 - Name new Python files with lowercase `snake_case`.
@@ -27,7 +41,7 @@ This rule applies recursively to every training project under this repository.
 For every model-training run, validation/evaluation that creates model artifacts,
 or modification to a training loop, invoke and follow the
 `$training-output-reporting` skill at
-`/home/cihcilab/.codex/skills/training-output-reporting/SKILL.md`.
+`$HOME/.codex/skills/training-output-reporting/SKILL.md`.
 
 - Put cross-validation output under
   `<project_root>/runs/<experiment_id>/<k>fold/<expert>/fold<index>/`, owned by

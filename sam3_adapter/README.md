@@ -1,5 +1,10 @@
 # SAM3 probes 與 SAM3-Adapter 訓練
 
+Clone、官方程式／權重下載、環境安裝與開始訓練請依
+[Server 操作手冊](../docs/server_training_manual.md)。整合 runtime 與 reporting
+skill 從本 repo 的 `assets/training/` 來源包安裝，不需向原工作站複製。
+
+
 本資料夾把兩種用途分成獨立入口：`train_probe.py` 只重現 SAM2/SAM3 frozen-backbone probe 比較；`train.py` 只訓練三個可選 512／1008 model input 的 SAM3-Adapter 劣化專家，loss 與 metrics 固定回到 512×512。
 
 ## 組別

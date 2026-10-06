@@ -25,3 +25,10 @@ regex==2026.7.19
 huggingface-hub==1.29.0
 typing-extensions==4.16.0
 tensorboard==2.21.0
+# Required by the training-output-reporting loss-curve exporter.
+matplotlib==3.10.9
+# Imported by the pinned SAM3/Adapter runtime even on the image training path.
+einops==0.8.2
+pycocotools==2.0.11
+psutil==7.2.2
+decord==0.6.0
