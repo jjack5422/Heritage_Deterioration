@@ -2,6 +2,12 @@
 
 ## Remote server and new annotation data
 
+- Name new server environments `venv`. Detect the actual OS and shell first:
+  Linux/WSL uses `venv/bin/python`; native Windows uses
+  `venv/Scripts/python.exe`. Read `docs/windows_training_manual.md` for
+  PowerShell/WSL setup. Verify the interpreter before installing packages or
+  asking for Hugging Face login.
+
 - For new source photos and annotations, read
   `docs/new_data_training_workflow.md` before conversion, tiling, splitting, or
   adapting a trainer's data contract. Read `docs/server_training_manual.md` for
@@ -73,6 +79,6 @@ or modification to a training loop, invoke and follow the
   required deliverables for a completed run. Use the skill's exporter and
   report builder rather than hand-editing derived reports.
 
-The shared `crackseg_env` is the expected Python environment for the current
-PyTorch projects. Keep generated run folders ignored by Git unless a user
-explicitly requests versioning a compact report.
+New server setup uses `venv`; existing workstation environments may retain
+their recorded paths. Keep generated run folders ignored by Git unless a
+user explicitly requests versioning a compact report.

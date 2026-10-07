@@ -4,6 +4,8 @@
 
 **狀態：已完成規劃文件，尚未實作通用新資料 importer／manifest reader。**目前 repository 的三專家入口接受綁定既有資料的 schema 6／8，不能直接讀任意新資料。本文件明確區分現在可以執行的移機／環境步驟，以及另一台 AI 須先實作的資料擴充；不把提議的 CLI 當成已存在功能。
 
+資料語意與切片規格跨平台相同；本文 shell 命令為 Linux／WSL 範例。Windows 原生 PowerShell 的 Python、pip、HF、環境變數與訓練命令請用 [Windows 手冊](windows_training_manual.md)。新環境名稱一律 `venv`。
+
 ## 1. 人員需要準備什麼
 
 1. 新原圖與標註檔案；原圖／標註可以分資料夾，但必須能建立唯一對應。
@@ -190,7 +192,7 @@ importer／reader 實作與資料測試通過後，執行 inspect、dry-run、�
 ```bash
 set -e
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
-export PYTHON_BIN="$PWD/crackseg_env/bin/python"
+export PYTHON_BIN="$PWD/venv/bin/python"
 export MANIFEST_DIR=_data/processed/heritage_new_annotations/manifests
 
 "$PYTHON_BIN" -m sam2_adapter.train_experts \
@@ -222,7 +224,7 @@ expert：scratch_crack 或 loss 或 shrinkage_craquelure 或三個，填實際�
 GPU：0
 experiment_id：填新資料、新模型的唯一名稱
 
-授權：建立新的 crackseg_env、安裝相容依賴；依新資料工作流程實作所需格式的 importer、
+授權：建立新的 venv、安裝相容依賴；依新資料工作流程實作所需格式的 importer、
 同步切片、source-group split 與新的 portable manifest reader 分支、必要資料測試；
 完成資料／環境／smoke 驗證後，依手冊既定模型參數執行所選模型訓練與 reporting。
 不要 commit 或 push；不覆寫原圖、原標註或舊 runs。

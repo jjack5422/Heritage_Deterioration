@@ -4,6 +4,20 @@
 
 適用 Linux、Python 3.12、NVIDIA CUDA GPU。本版本提供必要訓練程式與來源包；環境安裝、GPU smoke 與正式訓練需在目標 server 另行執行。資料與人工標註由操作人員提供；Python 套件和官方 base weights 在 server 下載。
 
+**先辨識 OS 與 shell。本文的命令使用 Linux／WSL Bash；原生 Windows PowerShell 請讀 [Windows 手冊](windows_training_manual.md)，不能直接執行 `python3.12`、`source` 或 `venv/bin/...`。**已有文件 sparse clone 時，在 PowerShell 先執行：
+
+```powershell
+git sparse-checkout add '/docs/windows_training_manual.md'
+if ($LASTEXITCODE -ne 0) { throw 'Windows manual download failed' }
+```
+
+| 執行環境 | 建立 `venv` | Python／HF 路徑 |
+|---|---|---|
+| Linux／WSL Ubuntu Bash | `python3.12 -m venv venv` | `./venv/bin/python`、`./venv/bin/hf` |
+| Windows 原生 PowerShell | `py -3.12 -m venv venv` | `.\venv\Scripts\python.exe`、`.\venv\Scripts\hf.exe` |
+
+新環境名稱統一為 `venv`。先驗證 Python 3.12、venv executable 與下載連線，再安裝套件；HF executable 實際存在後才要求登入。Windows 原生 Python 與 WSL Python 不能共用同一個 venv。
+
 ## 0. 文件可以單獨取得，其他程式必須有可下載的來源
 
 可以只 push 這兩份文件，讓新 server 先只取得文件；不需要操作人員先下載整份專案。Codex 隨後會擴充 sparse checkout 取得本 repo 的必要程式，再 clone 官方 SAM2／SAM3 並安裝套件。
@@ -29,6 +43,7 @@ assets/training/               兩份小型來源程式包、checksums、manifes
   bundle_manifest.json
 docs/server_training_manual.md
 docs/new_data_training_workflow.md
+docs/windows_training_manual.md     Windows 原生 PowerShell／WSL2 流程
 ```
 
 保持 datasets、weights、venv、outputs、runs 與解開後的 upstream/runtime ignored。這份清單是程式來源核對範圍，不代表 server 初始 clone 必須取得它們，也不是要求版本化資料或權重。
@@ -58,7 +73,8 @@ git sparse-checkout add \
   '/.gitignore' '/AGENTS.md' '/README.md' '/requirements.txt' \
   '/sam2_adapter/' '/sam3_adapter/' '/_lib/' \
   '/scripts/data/' '/assets/training/' \
-  '/docs/independent_expert_training_split.md'
+  '/docs/independent_expert_training_split.md' \
+  '/docs/windows_training_manual.md'
 ```
 
 新增 paths 會沿用初始 non-cone 模式，並按需取得已發布的檔案內容。之後 Codex 先讀新取得的 AGENTS.md，再繼續安裝。初始階段只取出兩份文件，後續也不取出 UNet、SegFormer、web UI 或其他無關資料夾。
@@ -100,20 +116,22 @@ git -C segment-anything-3 checkout --detach 660a5e9e1b8b4c02c0ad97229b88a09a6e4f
 
 ## 3. 建立環境與安裝套件
 
-已有 `crackseg_env` 時先檢查；沒有時建立新的 venv。下面的 torch／torchvision 是本機參考配對，Codex 必須確認適用目標 GPU／driver、wheel 可下載，再執行。
+本節只在 Linux／WSL Bash 執行；Windows 使用 Windows 手冊。已有 `venv` 時先檢查，不重新初始化。沒有時必須實際建立並驗證後再安裝套件。下面的 torch／torchvision 是本機參考配對，Codex 必須確認適用目標 GPU／driver、wheel 可下載，再執行。
 
 ```bash
 set -e
-python3.12 -m venv crackseg_env
-source crackseg_env/bin/activate
-python -m pip install --upgrade pip wheel "setuptools<81"
-python -m pip install --index-url https://download.pytorch.org/whl/cu128 \
+python3.12 --version
+if [ ! -e venv ]; then python3.12 -m venv venv; fi
+test -x ./venv/bin/python
+./venv/bin/python -c 'import sys; print(sys.executable); print(sys.version); assert sys.prefix != sys.base_prefix; assert sys.version_info[:2] == (3, 12)'
+./venv/bin/python -m pip install --upgrade pip wheel "setuptools<81"
+./venv/bin/python -m pip install --index-url https://download.pytorch.org/whl/cu128 \
   torch==2.11.0 torchvision==0.26.0
-python -m pip install -r requirements.txt
-python -m pip install -e ./_lib
-SAM2_BUILD_CUDA=0 python -m pip install --no-build-isolation --no-deps -e ./segment-anything-2
-python -m pip install --no-deps -e ./segment-anything-3
-python -m pip check
+./venv/bin/python -m pip install -r requirements.txt
+./venv/bin/python -m pip install -e ./_lib
+SAM2_BUILD_CUDA=0 ./venv/bin/python -m pip install --no-build-isolation --no-deps -e ./segment-anything-2
+./venv/bin/python -m pip install --no-deps -e ./segment-anything-3
+./venv/bin/python -m pip check
 ```
 
 driver／wheel 不相容時，以 [PyTorch 官方安裝頁](https://pytorch.org/get-started/locally/)或[版本配對表](https://pytorch.org/get-started/previous-versions/)選擇相容配對，記錄差異，不直接裝 CPU wheel 或默默聲稱重現本機環境。官方 SAM3 文件的基本要求為 Python 3.12、PyTorch 2.7 以上與適用的 CUDA GPU；實際是否可用仍須以下驗證。
@@ -164,8 +182,9 @@ curl -fL --retry 3 \
 
 ```bash
 set -e
-crackseg_env/bin/hf auth login
-crackseg_env/bin/hf download facebook/sam3 sam3.pt \
+test -x ./venv/bin/hf
+venv/bin/hf auth login
+venv/bin/hf download facebook/sam3 sam3.pt \
   --local-dir segment-anything-3/checkpoints
 ```
 
@@ -188,7 +207,7 @@ sha256sum segment-anything-3/checkpoints/sam3.pt
 
 ```bash
 set -e
-export PYTHON_BIN="$PWD/crackseg_env/bin/python"
+export PYTHON_BIN="$PWD/venv/bin/python"
 export PYTHONPATH="$PWD${PYTHONPATH:+:$PYTHONPATH}"
 
 "$PYTHON_BIN" -c "import torch,sam2,sam3,matplotlib; import sam2_adapter.train_experts,sam3_adapter.train; print({'torch':torch.__version__,'cuda':torch.version.cuda,'available':torch.cuda.is_available()}); assert torch.cuda.is_available(); print(torch.cuda.get_device_name(0)); print((torch.ones(1,device='cuda')+1).item())"
@@ -292,6 +311,8 @@ trainer 自動呼叫 bundled exporter／report builder；不手改派生報告�
 ```text
 這台 server 目前只 sparse checkout 了兩份文件。
 先讀 docs/server_training_manual.md、docs/new_data_training_workflow.md。
+先辨識實際 OS／shell；若是 Windows PowerShell，先取得並閱讀
+docs/windows_training_manual.md，依其原生／WSL 路線處理，不直接執行 Bash 命令。
 依手冊第 1 節自行擴充 sparse checkout 取得必要程式，再讀 AGENTS.md、
 兩個 adapter README、requirements.txt，以及可取得的 assets/training/README.md。
 實際完成這台 server 的環境、資料與所選模型訓練流程。
@@ -303,13 +324,18 @@ experiment_id：填新的唯一名稱
 GPU：0
 
 我授權你取得本 repo 的必要訓練程式、clone 官方 upstream、下載所選模型權重、
-建立 crackseg_env、安裝套件、
+建立 venv、安裝套件、
 從 assets/training 解開 runtime／reporting skill、校驗資料、執行 GPU smoke，
 成功後依手冊既定參數開始所選模型／expert 的正式訓練並完成 reports。
 不要 commit 或 push，不覆寫原圖／GT／舊 runs。
 
 使用現在 clone 的 repo 版本，不切回手冊或舊文件記錄的歷史主專案 commit。
 官方 SAM2／SAM3 固定手冊 revisions；torch wheel 依實際 GPU／driver 驗證。
+環境名稱一律 venv；必須先建立並驗證 venv，再安裝套件。
+Linux／WSL 使用 venv/bin/python、venv/bin/hf；Windows 使用
+venv\Scripts\python.exe、venv\Scripts\hf.exe。
+每次 pip 都指定已驗證的 venv Python，不依賴先前命令的 activation。
+HF executable 尚未存在時先完成安裝，不提供不存在的登入路徑。
 讀目前 HOME 的 training-output-reporting skill 和 run contract。
 如果是新原圖／標註，依 docs/new_data_training_workflow.md 先確認格式和 mapping，
 實作所需 importer／新 reader 與資料測試，完成同步切片和同源分組 split，
